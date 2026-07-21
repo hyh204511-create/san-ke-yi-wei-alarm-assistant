@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>数据与报表中心</title>
+  <style>
+    :root{--ink:#10231d;--paper:#edf0e9;--panel:#fbfcf7;--green:#12634a;--line:#aeb8b0}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",sans-serif}
+    header{padding:38px 5vw;border-bottom:4px solid var(--ink);background:#dfe7df}h1{margin:8px 0;font-size:clamp(38px,5vw,68px)}header p{max-width:900px;line-height:1.8}
+    .wrap{padding:28px 5vw 70px}.generator{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:18px;background:var(--panel);border:1px solid var(--line);margin-bottom:24px}
+    .generator input,.generator select{width:100%;padding:9px}.generator button,button{padding:9px 12px;border:1px solid var(--ink);background:transparent;cursor:pointer}.primary{background:var(--green);border-color:var(--green);color:#fff}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px}.report{padding:20px;background:var(--panel);border:1px solid var(--line)}.head{display:flex;justify-content:space-between}.title{font-size:23px;font-weight:900}.status{padding:5px 8px;background:var(--ink);color:#fff;font-size:11px}.status-PUBLISHED{background:var(--green)}
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}.metric{padding:10px;background:#e8eee8}.metric b{display:block;font-size:20px}.positive-note{margin:0 0 14px;color:#426252;font-size:13px}
+    .actions{display:flex;flex-wrap:wrap;gap:7px}.actions form{display:flex;gap:6px}.actions input,.actions select{padding:8px}.exports{margin-top:30px}.export{display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid var(--line)}a{color:var(--green)}
+    @media(max-width:900px){.generator{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <header>
+    <small>ENTERPRISE DATA / DAILY &amp; MONTHLY SNAPSHOTS</small>
+    <h1>数据与报表中心</h1>
+    <p>日报、月报和导出与值班插件分离。每份报表锁定企业、统计周期、北京时间口径、数据截止时间和版本；迟到数据或口径更正会生成新版本，不覆盖历史。</p>
+    <a href="/assistant/">身份中心</a> · <a href="/assistant/disposals/">人工处置</a>
+  </header>
+  <main class="wrap">
+    {% if "report.generate" in permissions %}
+    <form class="generator" method="post" action="/assistant/reports/actions/generate">
+      {% csrf_token %}
+      <select name="enterprise_id" required>{% for scope in enterprise_scopes %}<option value="{{ scope.enterpriseId }}">{{ scope.enterpriseName }}</option>{% endfor %}</select>
+      <select name="period_type"><option value="DAILY">日报</option><option value="MONTHLY">月报</option></select>
+      <input name="period_value" placeholder="2026-07-19 或 2026-07" required><input name="correction_reason" placeholder="更正版时填写原因"><button class="primary">生成报表草稿</button>
+    </form>
+    {% endif %}
+    <section class="grid">
+      {% for report in snapshots %}
+      <article class="report">
+        <div class="head"><div><div class="title">{{ report.enterprise.name }} {{ report.get_period_type_display }}</div><b>{{ report.period_start }} · V{{ report.version }}</b></div><span class="status status-{{ report.status }}">{{ report.get_status_display }}</span></div>
+        <div class="metrics">
+          <div class="metric"><small>报警总数</small><b>{{ report.metrics.alarmTotal }}</b></div>
+          <div class="metric"><small>正报（REALTIME）</small><b>{{ report.metrics.positiveReportTotal }}</b></div>
+          <div class="metric"><small>待人工</small><b>{{ report.metrics.manualPending }}</b></div>
+          <div class="metric"><small>已完成</small><b>{{ report.metrics.manualCompleted }}</b></div>
+        </div>
+        <p class="positive-note">正报统计口径：仅计入服务器去重后的 <code>source_kind = REALTIME</code>；预警（PREWARNING）不计入正报。</p>
+        <p>数据截止：{{ report.data_cutoff_at }}{% if report.correction_reason %}<br>更正原因：{{ report.correction_reason }}{% endif %}</p>
+        <div class="actions">
+          {% if report.status == "DRAFT" and "report.publish" in permissions %}<form method="post" action="/assistant/reports/actions/{{ report.public_id }}/publish">{% csrf_token %}<button class="primary">发布快照</button></form>{% endif %}
+          {% if report.status == "PUBLISHED" and "export.masked" in permissions %}<form method="post" action="/assistant/reports/actions/{{ report.public_id }}/export">{% csrf_token %}<input type="hidden" name="format" value="XLSX"><input name="purpose" placeholder="导出用途" required><button>生成Excel导出</button></form>{% endif %}
+        </div>
+      </article>
+      {% empty %}<article class="report">尚无日报或月报</article>{% endfor %}
+    </section>
+    <section class="exports"><h2>导出任务</h2>{% for job in exports %}<div class="export"><span>{{ job.file_name }} · {{ job.get_status_display }} · 下载 {{ job.download_count }} 次</span>{% if job.status == "READY" %}<a href="/assistant/reports/api/exports/{{ job.public_id }}/download">下载</a>{% endif %}</div>{% empty %}<p>尚无导出任务</p>{% endfor %}</section>
+  </main>
+</body>
+</html>

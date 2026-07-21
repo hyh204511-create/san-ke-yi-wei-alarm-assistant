@@ -1,0 +1,11 @@
+[Unit]
+Description=Run retention maintenance daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=assistant-daily-maintenance.service
+
+[Install]
+WantedBy=timers.target

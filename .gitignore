@@ -1,0 +1,38 @@
+# macOS / editors
+.DS_Store
+._*
+.~*
+*.swp
+*.tmp
+*.log
+
+# Local environment
+.env
+.env.*
+!.env.example
+*.local.json
+node_modules/
+coverage/
+__pycache__/
+*.py[cod]
+sandbox/sandbox.sqlite3
+sandbox/staticfiles/
+
+# Local databases, extension packages and signing material
+*.sqlite3
+*.sqlite
+*.db
+*.crx
+*.pem
+*.zip
+
+# Client-confidential evidence
+private/
+browser-extension/collector-data/
+*.mp4
+video_review_frames/
+tmp/
+backup/
+
+# Generated / unmaintainable prototype bundle
+prototypes/experiments/

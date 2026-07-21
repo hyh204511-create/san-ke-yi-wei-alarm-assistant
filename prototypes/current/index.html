@@ -1,0 +1,3051 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>两客一危智能监管平台 AI 报警处置助手 - 新版交互原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --line: #e2e8f0;
+      --line-strong: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --muted-2: #94a3b8;
+      --blue: #2563eb;
+      --blue-2: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --green: #059669;
+      --green-soft: #ecfdf5;
+      --amber: #b45309;
+      --amber-soft: #fffbeb;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --cyan: #0891b2;
+      --cyan-soft: #ecfeff;
+      --violet: #7c3aed;
+      --violet-soft: #f5f3ff;
+      --nav: #101828;
+      --nav-2: #172033;
+      --shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 14px;
+      background: linear-gradient(180deg, var(--nav), var(--nav-2));
+      color: #dbe7f5;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 8px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+      background: linear-gradient(135deg, #38bdf8, #2563eb 55%, #7c3aed);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.25;
+      color: #fff;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 4px;
+      color: #9fb6d2;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+      padding: 16px 0;
+    }
+
+    .nav button {
+      width: 100%;
+      min-height: 42px;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #b9c6d8;
+      background: transparent;
+      text-align: left;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.10);
+    }
+
+    .nav svg,
+    .btn svg,
+    .icon-btn svg,
+    .mini-action svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2.1;
+      flex: 0 0 auto;
+    }
+
+    .side-note {
+      margin-top: auto;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .side-note b {
+      display: block;
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .side-note span {
+      display: block;
+      margin-top: 8px;
+      color: #a9bad0;
+      line-height: 1.5;
+      font-size: 12px;
+    }
+
+    .main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 64px minmax(0, 1fr);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(245, 247, 251, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    .crumb {
+      min-width: 220px;
+      display: grid;
+      gap: 2px;
+    }
+
+    .crumb span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .crumb strong {
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .search {
+      width: min(320px, 28vw);
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 0 12px;
+      background: #fff;
+      color: var(--text);
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .status-pill {
+      min-height: 30px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .btn,
+    .icon-btn,
+    .mini-action {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .btn {
+      padding: 0 13px;
+    }
+
+    .icon-btn {
+      width: 36px;
+      padding: 0;
+    }
+
+    .mini-action {
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .btn:hover,
+    .icon-btn:hover,
+    .mini-action:hover {
+      border-color: var(--line-strong);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    .btn.primary,
+    .mini-action.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn.danger,
+    .mini-action.danger {
+      border-color: var(--red);
+      background: var(--red);
+      color: #fff;
+    }
+
+    .btn.success,
+    .mini-action.success {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .btn.warn,
+    .mini-action.warn {
+      border-color: #d97706;
+      background: #d97706;
+      color: #fff;
+    }
+
+    .content {
+      min-width: 0;
+      overflow: auto;
+    }
+
+    .view {
+      display: none;
+      padding: 22px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    .page-head h1 {
+      margin: 0;
+      font-size: 25px;
+      line-height: 1.2;
+    }
+
+    .page-head p {
+      margin: 8px 0 0;
+      max-width: 960px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .head-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 14px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+      min-width: 0;
+    }
+
+    .metric span {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .metric strong {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 27px;
+      line-height: 1;
+    }
+
+    .metric em {
+      font-style: normal;
+      color: var(--muted-2);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .workbench-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+
+    .embed-shell {
+      display: block;
+      margin-bottom: 14px;
+    }
+
+    .platform-stage {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(420px, 1fr) auto;
+    }
+
+    .platform-toolbar {
+      min-height: 48px;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fbfdff;
+    }
+
+    .platform-toolbar strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .platform-toolbar span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .platform-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .platform-tab {
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .platform-tab.active {
+      color: var(--blue);
+      border-color: #bfdbfe;
+      background: var(--blue-soft);
+    }
+
+    .platform-canvas {
+      position: relative;
+      min-height: 420px;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .platform-canvas img {
+      width: 100%;
+      height: 100%;
+      min-height: 420px;
+      object-fit: cover;
+      display: block;
+      opacity: 0.88;
+    }
+
+    .alarm-popover {
+      position: absolute;
+      top: 22px;
+      right: 20px;
+      width: min(360px, calc(100% - 40px));
+      border: 1px solid #fecaca;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18);
+      padding: 12px;
+    }
+
+    .alarm-popover h3 {
+      margin: 0;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .alarm-popover h3 svg {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      color: var(--red);
+    }
+
+    .alarm-popover p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 12px;
+    }
+
+    .plugin-anchor {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 52px;
+      background: rgba(37, 99, 235, 0.10);
+      border-left: 1px solid rgba(37, 99, 235, 0.25);
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+      font-weight: 850;
+      writing-mode: vertical-rl;
+      letter-spacing: 0;
+      font-size: 12px;
+    }
+
+    .platform-status-strip {
+      border-top: 1px solid var(--line);
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      background: #fff;
+    }
+
+    .platform-status-strip .info {
+      padding: 8px;
+    }
+
+    .plugin-drawer {
+      min-width: 0;
+      position: fixed;
+      right: 22px;
+      top: 82px;
+      width: 430px;
+      height: calc(100vh - 104px);
+      z-index: 45;
+    }
+
+    .plugin-drawer .panel {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .sidepanel-shell {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .sidepanel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fff;
+    }
+
+    .sidepanel-head h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .sidepanel-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .sidepanel-scroll {
+      overflow: auto;
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      background: #f8fafc;
+      min-height: 0;
+    }
+
+    .secondary-workbench {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .sidepanel-section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .sidepanel-section header {
+      min-height: 42px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .sidepanel-section header h3 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .sidepanel-section .body {
+      padding: 12px;
+    }
+
+    .sidepanel-queue {
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .sidepanel-queue .filter-row {
+      padding: 10px;
+    }
+
+    .sidepanel-queue .alarm-list {
+      max-height: none;
+      padding: 8px;
+    }
+
+    .compact-detail {
+      display: grid;
+      gap: 8px;
+    }
+
+    .compact-detail .info-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .compact-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .compact-title strong {
+      font-size: 15px;
+    }
+
+    .mount-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mount-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .mount-item strong {
+      font-size: 13px;
+    }
+
+    .mount-item span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .trial-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .trial-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: #fff;
+      display: grid;
+      gap: 5px;
+    }
+
+    .trial-item strong {
+      font-size: 13px;
+    }
+
+    .trial-item span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      min-width: 0;
+    }
+
+    .panel-head {
+      min-height: 54px;
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-head h2,
+    .panel-head h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .panel-body {
+      padding: 15px;
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      min-height: 27px;
+      padding: 0 10px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chip.active,
+    .chip.blue {
+      border-color: #bfdbfe;
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .chip.green {
+      border-color: #bbf7d0;
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .chip.amber {
+      border-color: #fde68a;
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .chip.red {
+      border-color: #fecaca;
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .chip.cyan {
+      border-color: #a5f3fc;
+      color: var(--cyan);
+      background: var(--cyan-soft);
+    }
+
+    .chip.violet {
+      border-color: #ddd6fe;
+      color: var(--violet);
+      background: var(--violet-soft);
+    }
+
+    .alarm-list {
+      max-height: calc(100vh - 285px);
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .alarm-item {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      text-align: left;
+      padding: 11px;
+      margin-bottom: 8px;
+    }
+
+    .alarm-item:hover {
+      border-color: var(--line);
+      background: var(--surface-soft);
+    }
+
+    .alarm-item.active {
+      border-color: #bfdbfe;
+      background: var(--blue-soft);
+    }
+
+    .alarm-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .alarm-top strong {
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .alarm-meta {
+      display: grid;
+      gap: 5px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .badge {
+      min-height: 22px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      padding: 0 8px;
+      color: var(--muted);
+      background: #eef2f7;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.blue {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .badge.green {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .badge.amber {
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .badge.red {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .badge.cyan {
+      color: var(--cyan);
+      background: var(--cyan-soft);
+    }
+
+    .badge.violet {
+      color: var(--violet);
+      background: var(--violet-soft);
+    }
+
+    .evidence-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .visual {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #0b1220;
+      min-height: 264px;
+      position: relative;
+    }
+
+    .visual img {
+      width: 100%;
+      height: 100%;
+      min-height: 264px;
+      object-fit: cover;
+      display: block;
+      opacity: 0.92;
+    }
+
+    .visual-overlay {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .hud-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.20);
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: rgba(15, 23, 42, 0.68);
+      backdrop-filter: blur(10px);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .info {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .info span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .info strong {
+      display: block;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .source-list,
+    .timeline,
+    .stepper,
+    .guard-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .source-item,
+    .step,
+    .guard,
+    .timeline-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: #fff;
+    }
+
+    .source-item {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .source-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .source-item strong {
+      line-height: 1.35;
+    }
+
+    .section-title {
+      margin: 15px 0 9px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .section-title h3 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .timeline {
+      max-height: 230px;
+      overflow: auto;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      gap: 10px;
+      position: relative;
+    }
+
+    .timeline-item time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .timeline-item strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .timeline-item p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 12px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .step-index {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      background: #eef2f7;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .step.done .step-index {
+      color: #fff;
+      background: var(--green);
+    }
+
+    .step.active .step-index {
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .step.block .step-index {
+      color: #fff;
+      background: var(--amber);
+    }
+
+    .step strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .step span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .action-grid .btn {
+      width: 100%;
+      min-height: 38px;
+      padding: 0 9px;
+    }
+
+    .assistant-note {
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+      background: var(--blue-soft);
+      padding: 12px;
+      color: #1e3a8a;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    .blocker-note {
+      border: 1px solid #fecaca;
+      border-radius: var(--radius);
+      background: var(--red-soft);
+      padding: 12px;
+      color: #991b1b;
+      line-height: 1.5;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .platform-banner {
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+      background: linear-gradient(90deg, #eff6ff, #ffffff);
+      padding: 11px 13px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #1e3a8a;
+      line-height: 1.45;
+    }
+
+    .platform-banner strong {
+      color: #172554;
+    }
+
+    .platform-banner span {
+      color: #475569;
+      font-size: 12px;
+    }
+
+    .blocked-action {
+      opacity: 0.58;
+      cursor: not-allowed;
+    }
+
+    .guard {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 12px;
+    }
+
+    .guard b {
+      color: var(--text);
+    }
+
+    .split-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    td {
+      color: #263447;
+    }
+
+    tr:hover td {
+      background: #fafcff;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .detail-box {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+    }
+
+    .detail-box header {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .detail-box header h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .detail-box .body {
+      padding: 14px;
+    }
+
+    .copy-block {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+      padding: 11px;
+      color: #334155;
+      line-height: 1.55;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .scope-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+    }
+
+    .scope-card header {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .scope-card header h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .scope-card ul {
+      margin: 0;
+      padding: 12px 16px 15px 30px;
+      color: #334155;
+      line-height: 1.75;
+    }
+
+    .readiness {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .check-row {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 13px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .check-row strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .check-row span {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 12px;
+    }
+
+    .switch {
+      width: 42px;
+      height: 24px;
+      border: 0;
+      border-radius: 999px;
+      background: #cbd5e1;
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+      transition: transform 0.18s ease;
+    }
+
+    .switch.on {
+      background: var(--blue);
+    }
+
+    .switch.on::after {
+      transform: translateX(18px);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.45);
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(880px, 96vw);
+      max-height: 88vh;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 28px 72px rgba(15, 23, 42, 0.24);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .modal-head,
+    .modal-foot {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .modal-foot {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      justify-content: flex-end;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .modal-body {
+      padding: 16px;
+      overflow: auto;
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 80;
+      width: min(380px, calc(100vw - 44px));
+      display: none;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18);
+      padding: 13px 14px;
+    }
+
+    .toast.show {
+      display: block;
+      animation: slide-in 0.18s ease-out;
+    }
+
+    .toast strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .toast p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    @keyframes slide-in {
+      from {
+        transform: translateY(10px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @media (max-width: 1430px) {
+      .metric-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .workbench-grid {
+        grid-template-columns: 330px minmax(500px, 1fr);
+      }
+
+      .workbench-grid > .panel:last-child {
+        grid-column: 1 / -1;
+      }
+
+      .embed-shell {
+        padding-right: 0;
+      }
+
+      .plugin-drawer {
+        width: 390px;
+      }
+
+      .action-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .side-note {
+        display: none;
+      }
+
+      .topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+        height: auto;
+        padding: 12px;
+      }
+
+      .search {
+        width: 100%;
+      }
+
+      .top-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+      }
+
+      .metric-grid,
+      .embed-shell,
+      .workbench-grid,
+      .secondary-workbench,
+      .evidence-layout,
+      .split-layout,
+      .matrix,
+      .readiness {
+        grid-template-columns: 1fr;
+      }
+
+      .plugin-drawer {
+        position: static;
+        width: auto;
+        height: auto;
+      }
+
+      .embed-shell {
+        padding-right: 0;
+      }
+
+      .action-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .platform-status-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">AI</div>
+        <div>
+          <strong>两客一危<br>报警处置助手</strong>
+          <span>浏览器插件型第一处置闭环</span>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="side-note">
+        <b>首版边界</b>
+        <span>不重建省平台，不替代人工最终判断。AI 只辅助监听、匹配规则、固定话术提醒、纠正检测、短信通知和台账留痕。</span>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumb">
+          <span id="topHint">嵌入省平台页面的插件侧栏，优先暴露失败、待确认和人工接管</span>
+          <strong id="topTitle">省平台插件处置控制台</strong>
+        </div>
+        <div class="top-actions">
+          <input class="search" id="globalSearch" placeholder="搜索车牌、企业、驾驶员、报警类型">
+          <span class="status-pill"><i class="dot"></i> 插件在线</span>
+          <button class="icon-btn" title="模拟省平台新报警" onclick="simulateAlarm()"></button>
+          <button class="btn primary" onclick="runFailureDrill()"></button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="view active" id="view-workbench"></section>
+        <section class="view" id="view-events"></section>
+        <section class="view" id="view-ledger"></section>
+        <section class="view" id="view-rules"></section>
+        <section class="view" id="view-scope"></section>
+        <section class="view" id="view-integration"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" onclick="backdropClose(event)">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">事件详情</h3>
+        <button class="icon-btn" id="modalClose" title="关闭" onclick="closeModal()"></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <strong id="toastTitle">已更新</strong>
+    <p id="toastBody">操作已写入台账。</p>
+  </div>
+
+  <script>
+    const icons = {
+      workbench: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 13h6V4H4v9Z"/><path d="M14 20h6V4h-6v16Z"/><path d="M4 20h6v-3H4v3Z"/></svg>',
+      events: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"/><path d="M8 8h8M8 12h5"/></svg>',
+      ledger: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
+      rules: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16v5H4zM4 15h16v5H4z"/><path d="M6 9v6M18 9v6"/></svg>',
+      scope: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>',
+      integration: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 4.43"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.33-1.33"/></svg>',
+      plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>',
+      play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m8 5 11 7-11 7V5Z"/></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+      copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.32 1.77.57 2.61a2 2 0 0 1-.45 2.11L8 9.67a16 16 0 0 0 6.33 6.33l1.23-1.23a2 2 0 0 1 2.11-.45c.84.25 1.72.45 2.61.57A2 2 0 0 1 22 16.92Z"/></svg>',
+      bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m20 6-11 11-5-5"/></svg>',
+      alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+      file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v6h6"/></svg>',
+      eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
+      message: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5A8.5 8.5 0 0 1 21 11v.5Z"/></svg>'
+    };
+
+    const navItems = [
+      ["workbench", "插件控制台", "省平台侧栏处置、规则硬拦截、异常接管"],
+      ["events", "事件中心", "短信接收、详情页、企业话术"],
+      ["ledger", "处理台账", "AI 参与动作与人工确认追溯"],
+      ["rules", "规则库", "官方规则、客户 SOP 与待确认项"],
+      ["scope", "首版范围", "P0 交付、后置能力和验收口径"],
+      ["integration", "接入检查", "DOM、权限、短信与安全配置"]
+    ];
+
+    const rules = [
+      { type: "生理疲劳报警", official: "即时干预", sop: "语音对讲必做，提醒安全停车休息", method: "语音优先", correction: "降速并就近安全停车，或报警解除", status: "待确认", risk: "高" },
+      { type: "抽烟报警", official: "实时提醒", sop: "语音对讲优先，文本作为兜底", method: "语音优先", correction: "视频中停止抽烟，报警不再持续", status: "已确认", risk: "中" },
+      { type: "接打手持电话报警", official: "实时提醒", sop: "语音对讲优先", method: "语音优先", correction: "停止接打手持电话，报警解除", status: "已确认", risk: "中" },
+      { type: "超速驾驶报警", official: "当日分析", sop: "客户 SOP 下仍需实时提醒", method: "语音优先", correction: "车速下降到限速阈值以下", status: "口径差异", risk: "中" },
+      { type: "夜间异动报警", official: "当日分析", sop: "夜间高风险时段优先提醒并观察", method: "语音优先", correction: "车辆停止运行或降至风险阈值以下", status: "待确认", risk: "高" },
+      { type: "电子围栏报警", official: "核查分析", sop: "内部确认优先，不默认喊司机", method: "内部确认", correction: "车辆返回允许范围或企业确认合法调度", status: "已确认", risk: "中" },
+      { type: "设备故障报警", official: "设备核查", sop: "摄像头偏离或遮挡可语音提醒，其余内部确认", method: "内部确认", correction: "摄像头或 GNSS 状态恢复", status: "待确认", risk: "中" },
+      { type: "疑似事故报警", official: "即时核查", sop: "直接内部确认，高风险人工接管", method: "人工接管", correction: "内部人员核查并记录结果", status: "已确认", risk: "高" }
+    ];
+
+    const demoFrame = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+        <rect width="960" height="540" fill="#0b1220"/>
+        <path d="M0 420L220 250l150 110 180-190 410 370H0z" fill="#162a46"/>
+        <circle cx="760" cy="125" r="54" fill="#315474"/>
+        <text x="480" y="475" text-anchor="middle" fill="#9fbed8" font-size="28"
+          font-family="sans-serif">模拟视频画面 · 不含真实车辆或人员数据</text>
+      </svg>
+    `);
+
+    const alarms = [
+      {
+        id: "ALM-20260621-0217",
+        vehicle: "演示车辆-01",
+        company: "示例旅游运输企业 A",
+        driver: "张某",
+        type: "生理疲劳报警",
+        time: "2026-06-21 02:17:46",
+        location: "示例高速路段 K1887+420",
+        speed: 62,
+        risk: "高",
+        status: "待处置",
+        capture: "未监听",
+        read: "未读取",
+        rule: "未匹配",
+        remind: "未提醒",
+        correction: "未判断",
+        event: "未触发",
+        record: "未生成",
+        source: "省平台实时报警弹窗",
+        video: "视频可用",
+        confidence: 78,
+        frame: demoFrame,
+        next: "规则仍为待确认：禁止自动语音对讲，必须先由客户确认生理疲劳处置口径和停车休息判定。",
+        script: "请立即注意休息状态，保持安全驾驶。如感觉疲劳，请在确保安全的前提下就近停车休息。",
+        companyScript: "贵司演示车辆-01 于 2026-06-21 02:17:46 在示例高速路段发生生理疲劳报警。平台已进行语音对讲提醒，当前需企业立即联系驾驶员确认状态，并反馈处置结果。",
+        timeline: [
+          ["02:17:46", "省平台生成报警", "实时报警弹窗出现，等待插件监听。"]
+        ]
+      },
+      {
+        id: "ALM-20260621-0934",
+        vehicle: "演示车辆-02",
+        company: "示例客运企业 B",
+        driver: "李某",
+        type: "抽烟报警",
+        time: "2026-06-21 09:34:12",
+        location: "示例高速收费站附近",
+        speed: 38,
+        risk: "中",
+        status: "AI识别中",
+        capture: "已捕获",
+        read: "详情已读取",
+        rule: "规则已匹配",
+        remind: "语音对讲已播放",
+        correction: "无法判断",
+        event: "待发送",
+        record: "记录草稿",
+        source: "报警列表兜底读取",
+        video: "视频帧低清",
+        confidence: 64,
+        frame: demoFrame,
+        next: "视频置信度不足，建议值班人员接收事件并人工复核",
+        script: "请立即停止抽烟，保持双手规范驾驶，注意行车安全。",
+        companyScript: "贵司演示车辆-02 发生抽烟报警，平台已进行语音提醒。由于视频帧清晰度不足，当前无法确认是否纠正，请企业协助核实驾驶员状态。",
+        timeline: [
+          ["09:34:12", "报警列表读取", "弹窗未出现，从报警列表兜底读取车牌、企业、驾驶员和报警时间。"],
+          ["09:34:19", "语音对讲提醒", "使用固定审核话术播放司机提醒。"],
+          ["09:35:25", "纠正检测", "视频帧低清，系统标记为无法判断。"]
+        ]
+      },
+      {
+        id: "ALM-20260621-1008",
+        vehicle: "演示车辆-03",
+        company: "示例旅游客运企业 C",
+        driver: "王某",
+        type: "超速驾驶报警",
+        time: "2026-06-21 10:08:25",
+        location: "示例高速路段 K72+090",
+        speed: 86,
+        risk: "中",
+        status: "待规则确认",
+        capture: "已捕获",
+        read: "详情已读取",
+        rule: "口径差异",
+        remind: "未提醒",
+        correction: "未判断",
+        event: "未触发",
+        record: "未生成",
+        source: "省平台实时报警弹窗",
+        video: "无视频要求",
+        confidence: 72,
+        frame: demoFrame,
+        next: "官方口径与客户 SOP 冲突：未确认前只允许生成内部确认事件，不允许自动提醒司机。",
+        script: "当前车辆存在超速风险，请立即控制车速，按道路限速安全行驶。",
+        companyScript: "贵司演示车辆-03 发生超速驾驶报警。当前需确认客户 SOP 是否要求实时提醒司机，请值班人员按制度联系企业核实。",
+        timeline: [
+          ["10:08:25", "报警捕获", "插件读取报警详情与速度字段。"],
+          ["10:08:31", "规则口径差异", "官方当日分析口径与客户实时提醒诉求存在差异，等待业务确认。"]
+        ]
+      },
+      {
+        id: "ALM-20260621-1126",
+        vehicle: "演示车辆-04",
+        company: "示例危货运输企业 D",
+        driver: "赵某",
+        type: "设备故障报警",
+        time: "2026-06-21 11:26:03",
+        location: "示例城区道路",
+        speed: 0,
+        risk: "中",
+        status: "待人工接管",
+        capture: "已捕获",
+        read: "字段缺失",
+        rule: "规则已匹配",
+        remind: "未提醒",
+        correction: "无法判断",
+        event: "短信已发送",
+        record: "待补证",
+        source: "报警详情 DOM 读取失败",
+        video: "视频不可用",
+        confidence: 41,
+        frame: demoFrame,
+        next: "视频不可用和字段缺失必须提示人工接管，不自动闭环",
+        script: "当前设备状态异常，请确认摄像头、定位或通信设备是否恢复正常。",
+        companyScript: "贵司演示车辆-04 出现设备故障报警，平台视频不可用且部分字段读取失败。请企业尽快核实车载设备状态并反馈。",
+        timeline: [
+          ["11:26:03", "报警捕获", "插件捕获设备故障报警。"],
+          ["11:26:08", "详情读取异常", "速度、视频状态和按钮状态字段读取不完整。"],
+          ["11:26:15", "短信通知", "已通知值班业务人员接收，等待人工核查。"]
+        ]
+      }
+    ];
+
+    const readiness = [
+      ["alarmCapture", "报警弹窗与列表读取", "弹窗监听失败时必须从报警列表兜底，仍失败则提示人工接管。", true],
+      ["detailRead", "报警详情 DOM 字段", "车牌、企业、驾驶员、时间、位置、速度、车辆状态需标记来源。", true],
+      ["buttonTrigger", "省平台按钮触发权限", "文本下发、语音对讲、查看报警等按钮不可静默失败。", false],
+      ["vlmFrames", "VLM 视频帧采样", "低清、遮挡、夜间和摄像头偏移需输出无法判断。", true],
+      ["sms", "值班短信通道", "未纠正、无法判断、高风险和页面异常触发短信事件。", true],
+      ["eventAuth", "短信详情页访问控制", "链接有效期、身份校验、手机号与驾驶员信息脱敏需要客户确认。", false],
+      ["speech", "固定话术与本地语音", "司机提醒只播放审核后的固定模板，不自由生成喊话。", true],
+      ["contacts", "企业负责人通讯录", "首版只提供话术复制和人工拨号，不做无人值守自动外呼。", false]
+    ];
+
+    const state = {
+      activeView: "workbench",
+      selectedAlarm: alarms[0].id,
+      queueFilter: "全部",
+      ruleFilter: "全部",
+      globalSearch: "",
+      selectedEvent: alarms[1].id,
+      checks: Object.fromEntries(readiness.map(item => [item[0], item[3]]))
+    };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[ch]);
+    }
+
+    function currentAlarm() {
+      return alarms.find(item => item.id === state.selectedAlarm) || alarms[0];
+    }
+
+    function currentRule(alarm = currentAlarm()) {
+      return rules.find(item => item.type === alarm.type);
+    }
+
+    function checkReady(key) {
+      return Boolean(state.checks[key]);
+    }
+
+    function blockAction(alarm, title, detail, status) {
+      if (status) alarm.status = status;
+      addTimeline(alarm, title, detail);
+      toast(title, detail);
+      render();
+      return false;
+    }
+
+    function actionBlockers(alarm = currentAlarm()) {
+      const rule = currentRule(alarm);
+      const blockers = [];
+      if (!rule) blockers.push("未配置报警类型规则");
+      if (rule && rule.status !== "已确认") blockers.push(`规则状态为${rule.status}，不能自动触发司机提醒`);
+      if (!checkReady("buttonTrigger")) blockers.push("省平台按钮触发权限未就绪");
+      if (!checkReady("speech")) blockers.push("固定话术或本地语音播放未就绪");
+      if (alarm.read === "字段缺失") blockers.push("报警详情字段缺失");
+      if (alarm.video === "视频不可用") blockers.push("视频不可用，需人工核查");
+      return blockers;
+    }
+
+    function badgeTone(value) {
+      if (["高", "未纠正", "待人工接管", "视频不可用", "字段缺失", "短信已发送", "口径差异", "待补证", "动作被阻断", "链接未控权"].includes(value)) return "red";
+      if (["中", "待处置", "待规则确认", "无法判断", "待发送", "待确认", "按钮待授权", "需人工复核", "待人工确认"].includes(value)) return "amber";
+      if (["已纠正", "已归档", "已确认", "已捕获", "详情已读取", "规则已匹配", "语音对讲已播放", "文本已下发"].includes(value)) return "green";
+      if (["AI识别中", "记录草稿", "待发送"].includes(value)) return "blue";
+      if (["低", "无视频要求"].includes(value)) return "cyan";
+      return "";
+    }
+
+    function badge(value, tone) {
+      return `<span class="badge ${tone || badgeTone(value)}">${esc(value)}</span>`;
+    }
+
+    function chip(value, active, tone, handler) {
+      return `<button class="chip ${active ? "active" : ""} ${tone || ""}" onclick="${handler}">${esc(value)}</button>`;
+    }
+
+    function addTimeline(alarm, title, detail) {
+      const time = new Date().toLocaleTimeString("zh-CN", { hour12: false }).slice(0, 8);
+      alarm.timeline.unshift([time, title, detail]);
+    }
+
+    function toast(title, body) {
+      $("toastTitle").textContent = title;
+      $("toastBody").textContent = body;
+      $("toast").classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => $("toast").classList.remove("show"), 2800);
+    }
+
+    function renderNav() {
+      $("nav").innerHTML = navItems.map(([id, label]) => `
+        <button class="${state.activeView === id ? "active" : ""}" onclick="switchView('${id}')">
+          ${icons[id]}<span>${label}</span>
+        </button>
+      `).join("");
+      $("modalClose").innerHTML = icons.x;
+      document.querySelector(".top-actions .icon-btn").innerHTML = icons.plus;
+      document.querySelector(".top-actions .btn.primary").innerHTML = `${icons.alert}<span>故障演练</span>`;
+    }
+
+    function switchView(view) {
+      state.activeView = view;
+      document.querySelectorAll(".view").forEach(node => node.classList.remove("active"));
+      $(`view-${view}`).classList.add("active");
+      const nav = navItems.find(item => item[0] === view);
+      $("topTitle").textContent = nav ? nav[1] : "省平台插件处置控制台";
+      $("topHint").textContent = nav ? nav[2] : "";
+      render();
+    }
+
+    function statsHtml() {
+      const total = alarms.length;
+      const takeover = alarms.filter(a => ["待人工接管", "待规则确认"].includes(a.status) || ["无法判断", "未纠正", "需人工复核"].includes(a.correction)).length;
+      const reminded = alarms.filter(a => a.remind !== "未提醒").length;
+      const events = alarms.filter(a => a.event !== "未触发").length;
+      const records = alarms.filter(a => a.record !== "未生成").length;
+      const abnormal = alarms.filter(a => ["字段缺失", "视频不可用"].includes(a.read) || a.video === "视频不可用").length;
+      const items = [
+        ["实时报警", total, "条", "blue"],
+        ["需人工接管", takeover, "条", "red"],
+        ["已提醒司机", reminded, "次", "green"],
+        ["事件通知", events, "条", "violet"],
+        ["台账记录", records, "条", "cyan"],
+        ["页面异常", abnormal, "项", "amber"]
+      ];
+      return items.map(([label, value, unit, tone]) => `
+        <div class="metric">
+          <span>${label}${badge(tone === "red" ? "重点" : "实时", tone)}</span>
+          <strong>${value}<em>${unit}</em></strong>
+        </div>
+      `).join("");
+    }
+
+    function filteredAlarms() {
+      const keyword = state.globalSearch.trim().toLowerCase();
+      return alarms.filter(a => {
+        const byFilter = state.queueFilter === "全部"
+          || a.status === state.queueFilter
+          || a.correction === state.queueFilter
+          || a.risk === state.queueFilter
+          || a.event === state.queueFilter
+          || (state.queueFilter === "异常" && (a.read === "字段缺失" || a.video === "视频不可用"));
+        const text = `${a.vehicle} ${a.company} ${a.driver} ${a.type} ${a.location}`.toLowerCase();
+        return byFilter && (!keyword || text.includes(keyword));
+      });
+    }
+
+    function renderQueue() {
+      const filters = ["全部", "待处置", "待人工接管", "无法判断", "高", "异常"];
+      const rows = filteredAlarms().map(a => `
+        <button class="alarm-item ${a.id === state.selectedAlarm ? "active" : ""}" onclick="selectAlarm('${a.id}')">
+          <div class="alarm-top">
+            <strong>${esc(a.vehicle)}</strong>
+            ${badge(a.risk)}
+          </div>
+          <div class="alarm-meta">
+            <span>${esc(a.type)} · ${esc(a.driver)}</span>
+            <span>${esc(a.company)}</span>
+            <span>${esc(a.time)} · ${esc(a.location)}</span>
+          </div>
+          <div class="badge-row">
+            ${badge(a.status)}
+            ${badge(a.correction)}
+            ${badge(a.event)}
+          </div>
+        </button>
+      `).join("");
+      return `
+        <div class="filter-row">
+          ${filters.map(f => chip(f, state.queueFilter === f, f === "高" || f === "异常" ? "red" : "", `setQueueFilter('${f}')`)).join("")}
+        </div>
+        <div class="alarm-list">${rows || `<div class="panel-body"><span class="badge amber">无匹配报警</span></div>`}</div>
+      `;
+    }
+
+    function selectAlarm(id) {
+      state.selectedAlarm = id;
+      if (!state.selectedEvent || state.selectedEvent === id) state.selectedEvent = id;
+      render();
+    }
+
+    function setQueueFilter(value) {
+      state.queueFilter = value;
+      render();
+    }
+
+    function renderEvidence(a) {
+      const currentRule = rules.find(item => item.type === a.type);
+      return `
+        <div class="panel-head">
+          <h2>${esc(a.type)} · ${esc(a.vehicle)}</h2>
+          <div class="badge-row">${badge(a.status)}${badge(a.risk)}${badge(a.confidence + "% 置信度", a.confidence < 65 ? "amber" : "blue")}</div>
+        </div>
+        <div class="panel-body">
+          <div class="evidence-layout">
+            <div>
+              <div class="visual">
+                <img src="${esc(a.frame)}" alt="省平台报警详情截图">
+                <div class="visual-overlay">
+                  <span class="hud-tag"><i class="dot"></i>${esc(a.video)}</span>
+                  <span class="hud-tag">${esc(a.source)}</span>
+                </div>
+              </div>
+              <div class="section-title">
+                <h3>处置时间线</h3>
+                ${badge(a.record)}
+              </div>
+              <div class="timeline">
+                ${a.timeline.map(item => `
+                  <div class="timeline-item">
+                    <time>${esc(item[0])}</time>
+                    <div><strong>${esc(item[1])}</strong><p>${esc(item[2])}</p></div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+            <div>
+              <div class="info-grid">
+                ${[
+                  ["所属企业", a.company],
+                  ["驾驶员", a.driver],
+                  ["报警时间", a.time],
+                  ["当前速度", `${a.speed} km/h`],
+                  ["报警地点", a.location],
+                  ["读取来源", a.source]
+                ].map(([k, v]) => `<div class="info"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join("")}
+              </div>
+              <div class="section-title"><h3>规则命中</h3>${badge(a.rule)}</div>
+              <div class="source-list">
+                <div class="source-item"><span>官方口径</span><strong>${esc(currentRule?.official || "未配置")}</strong></div>
+                <div class="source-item"><span>客户 SOP</span><strong>${esc(currentRule?.sop || "待确认")}</strong></div>
+                <div class="source-item"><span>首版动作</span><strong>${esc(currentRule?.method || a.next)}</strong></div>
+                <div class="source-item"><span>纠正判定</span><strong>${esc(currentRule?.correction || "无法确认时进入人工接管")}</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function stepClass(done, active, block) {
+      if (block) return "step block";
+      if (done) return "step done";
+      if (active) return "step active";
+      return "step";
+    }
+
+    function renderAssistant(a) {
+      const blockers = actionBlockers(a);
+      const canTriggerDriver = blockers.length === 0;
+      const steps = [
+        ["报警监听", a.capture, a.capture !== "未监听", a.capture === "未监听"],
+        ["详情读取", a.read, a.read === "详情已读取", a.read === "字段缺失"],
+        ["规则匹配", a.rule, a.rule === "规则已匹配", ["口径差异", "待规则确认"].includes(a.rule)],
+        ["司机提醒", a.remind, a.remind !== "未提醒", false],
+        ["纠正检测", a.correction, a.correction !== "未判断", ["无法判断", "未纠正", "需人工复核"].includes(a.correction)],
+        ["事件升级", a.event, a.event !== "未触发", false],
+        ["台账留痕", a.record, a.record !== "未生成", a.record === "待补证"]
+      ];
+      return `
+        <div class="panel-head">
+          <h2>插件处置侧栏</h2>
+          ${blockers.length ? badge("动作受限", "red") : badge("可执行提醒", "green")}
+        </div>
+        <div class="panel-body">
+          <div class="assistant-note">${esc(a.next)}</div>
+          ${blockers.length ? `<div class="section-title"><h3>当前硬阻断</h3>${badge(blockers.length + " 项", "red")}</div><div class="blocker-note">${blockers.map(item => `· ${esc(item)}`).join("<br>")}</div>` : ""}
+          <div class="section-title"><h3>闭环步骤</h3>${badge(a.confidence < 65 ? "低置信度" : "可辅助判断", a.confidence < 65 ? "amber" : "green")}</div>
+          <div class="stepper">
+            ${steps.map((item, index) => `
+              <div class="${stepClass(item[2], item[3], item[4])}">
+                <div class="step-index">${index + 1}</div>
+                <div><strong>${esc(item[0])}</strong><span>${esc(item[1])}</span></div>
+                ${badge(item[2] ? "完成" : item[4] ? "关注" : "待办", item[2] ? "green" : item[4] ? "amber" : "")}
+              </div>
+            `).join("")}
+          </div>
+          <div class="section-title"><h3>最短操作路径</h3></div>
+          <div class="action-grid">
+            <button class="btn" onclick="captureAlarm()">${icons.bell}<span>监听弹窗</span></button>
+            <button class="btn" onclick="readDetail()">${icons.eye}<span>读取详情</span></button>
+            <button class="btn" onclick="matchRule()">${icons.rules}<span>匹配规则</span></button>
+            <button class="btn primary ${canTriggerDriver ? "" : "blocked-action"}" onclick="sendVoice()">${icons.play}<span>语音对讲</span></button>
+            <button class="btn ${canTriggerDriver ? "" : "blocked-action"}" onclick="sendText()">${icons.message}<span>文本下发</span></button>
+            <button class="btn warn" onclick="observeCorrection()">${icons.alert}<span>纠正检测</span></button>
+            <button class="btn danger" onclick="notifyDuty()">${icons.phone}<span>通知值班</span></button>
+            <button class="btn success" onclick="makeRecord()">${icons.file}<span>生成记录</span></button>
+          </div>
+          <div class="section-title"><h3>责任边界</h3></div>
+          <div class="guard-list">
+            <div class="guard">${icons.alert}<span><b>高风险、无法判断、低置信度</b> 必须进入人工确认，不能自动闭环。</span></div>
+            <div class="guard">${icons.check}<span><b>司机提醒</b> 只使用客户审核后的固定话术，本地语音模型不自由发挥。</span></div>
+            <div class="guard">${icons.file}<span><b>台账</b> 记录页面读取、按钮触发、短信、查看、复制、拨打和人工备注。</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderChromeSidePanel(a) {
+      const blockers = actionBlockers(a);
+      const canTriggerDriver = blockers.length === 0;
+      return `
+        <section class="panel sidepanel-shell">
+          <div class="sidepanel-head">
+            <div>
+              <h2>Chrome Side Panel · 报警处置助手</h2>
+              <p>同一省平台域名下跨页面持续挂载：报警列表、报警详情、视频页、查询页都显示同一侧栏。</p>
+            </div>
+            ${badge(blockers.length ? "动作受限" : "可执行", blockers.length ? "red" : "green")}
+          </div>
+          <div class="sidepanel-scroll">
+            <section class="sidepanel-section">
+              <header>
+                <h3>实时报警队列</h3>
+                ${badge(filteredAlarms().length + " 条", "blue")}
+              </header>
+              <div class="sidepanel-queue">
+                ${renderQueue()}
+              </div>
+            </section>
+
+            <section class="sidepanel-section">
+              <header>
+                <h3>当前选中报警</h3>
+                <button class="mini-action" onclick="openAlarmDetailModal('${a.id}')">${icons.eye}<span>查看详情</span></button>
+              </header>
+              <div class="body compact-detail">
+                <div class="compact-title">
+                  <strong>${esc(a.type)} · ${esc(a.vehicle)}</strong>
+                  ${badge(a.risk)}
+                </div>
+                <div class="badge-row">
+                  ${badge(a.status)}
+                  ${badge(a.rule)}
+                  ${badge(a.correction)}
+                  ${badge(a.confidence + "%", a.confidence < 65 ? "amber" : "blue")}
+                </div>
+              </div>
+            </section>
+
+            <section class="sidepanel-section">
+              <header>
+                <h3>处置动作</h3>
+                ${blockers.length ? badge("硬阻断", "red") : badge("可继续", "green")}
+              </header>
+              <div class="body">
+                <div class="assistant-note">${esc(a.next)}</div>
+                ${blockers.length ? `<div class="section-title"><h3>当前硬阻断</h3>${badge(blockers.length + " 项", "red")}</div><div class="blocker-note">${blockers.map(item => `· ${esc(item)}`).join("<br>")}</div>` : ""}
+                <div class="section-title"><h3>最短操作路径</h3></div>
+                <div class="action-grid">
+                  <button class="btn" onclick="captureAlarm()">${icons.bell}<span>监听弹窗</span></button>
+                  <button class="btn" onclick="readDetail()">${icons.eye}<span>读取详情</span></button>
+                  <button class="btn" onclick="matchRule()">${icons.rules}<span>匹配规则</span></button>
+                  <button class="btn primary ${canTriggerDriver ? "" : "blocked-action"}" onclick="sendVoice()">${icons.play}<span>语音对讲</span></button>
+                  <button class="btn ${canTriggerDriver ? "" : "blocked-action"}" onclick="sendText()">${icons.message}<span>文本下发</span></button>
+                  <button class="btn warn" onclick="observeCorrection()">${icons.alert}<span>纠正检测</span></button>
+                  <button class="btn danger" onclick="notifyDuty()">${icons.phone}<span>通知值班</span></button>
+                  <button class="btn success" onclick="makeRecord()">${icons.file}<span>生成记录</span></button>
+                </div>
+              </div>
+            </section>
+
+            <section class="sidepanel-section">
+              <header>
+                <h3>处置时间线</h3>
+                ${badge(a.record)}
+              </header>
+              <div class="body">
+                <div class="timeline">
+                  ${a.timeline.map(item => `
+                    <div class="timeline-item">
+                      <time>${esc(item[0])}</time>
+                      <div><strong>${esc(item[1])}</strong><p>${esc(item[2])}</p></div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderPlatformStage(a) {
+      return `
+        <section class="platform-stage">
+          <div class="platform-toolbar">
+            <div>
+              <strong>湖南省交通运输“三客一危”智能监管平台</strong>
+              <span>当前仍在省平台页面内操作，AI 插件不替代省平台业务入口</span>
+            </div>
+            <div class="platform-tabs">
+              <span class="platform-tab">数据看板</span>
+              <span class="platform-tab active">报警审核/处置</span>
+              <span class="platform-tab">报警查询</span>
+              <span class="platform-tab">车辆监管</span>
+            </div>
+          </div>
+          <div class="platform-canvas">
+            <img src="${esc(a.frame)}" alt="省平台页面画布">
+            <div class="alarm-popover">
+              <h3>${icons.alert}<span>${esc(a.type)}</span>${badge(a.risk)}</h3>
+              <p>${esc(a.vehicle)} · ${esc(a.company)} · ${esc(a.time)}</p>
+              <p>插件只读取页面可见字段；规则未确认或按钮无回执时，禁止自动提醒司机。</p>
+              <div class="badge-row">
+                ${badge(a.capture)}
+                ${badge(a.read)}
+                ${badge(a.rule)}
+              </div>
+            </div>
+            <div class="plugin-anchor">AI 插件侧栏</div>
+          </div>
+          <div class="platform-status-strip">
+            <div class="info"><span>省平台来源</span><strong>${esc(a.source)}</strong></div>
+            <div class="info"><span>按钮回执</span><strong>${esc(checkReady("buttonTrigger") ? a.remind : "未授权/无回执")}</strong></div>
+            <div class="info"><span>视频状态</span><strong>${esc(a.video)}</strong></div>
+            <div class="info"><span>接管要求</span><strong>${esc(a.risk === "高" || ["待规则确认", "按钮待授权"].includes(a.status) || a.status.includes("接管") ? "人工优先" : "按 SOP 继续")}</strong></div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderTrialPanel() {
+      const items = [
+        ["页面适配失败样本", "记录弹窗未出现、按钮灰掉、详情字段缺失、视频区加载失败。", "red"],
+        ["按钮回执校验", "文本下发和语音对讲必须拿到省平台可见结果，否则只记失败。", "amber"],
+        ["多报警并发", "同车多报警、重复弹窗、多标签页同时打开必须进入锁定或人工接管。", "amber"],
+        ["通知接收确认", "短信发送、详情页打开、身份确认、复制、拨号分开记录。", "red"],
+        ["审计证据链", "上线前补服务端时间、证据哈希、操作者身份和不可篡改日志。", "red"]
+      ];
+      return `
+        <div class="panel-head">
+          <h2>试运行故障清单</h2>
+          ${badge("上线前必须跑", "red")}
+        </div>
+        <div class="panel-body">
+          <div class="trial-list">
+            ${items.map(([title, desc, tone]) => `
+              <div class="trial-item">
+                <strong>${esc(title)} ${badge(tone === "red" ? "高风险" : "需验证", tone)}</strong>
+                <span>${esc(desc)}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMountPanel() {
+      const pages = [
+        ["报警审核/处置", "报警队列、当前报警详情、处置按钮保持在同一侧栏。", "当前页"],
+        ["报警查询", "切换到历史查询页时，侧栏保留当前事件上下文和台账入口。", "同域挂载"],
+        ["车辆监管", "打开车辆档案或视频页后，侧栏继续显示报警处置状态。", "同域挂载"],
+        ["报警详情弹窗", "弹窗或详情页不新开后台，侧栏只读取可见字段并等待回执。", "同域挂载"]
+      ];
+      return `
+        <div class="panel-head">
+          <h2>侧栏跨页面挂载</h2>
+          ${badge("Chrome Side Panel", "blue")}
+        </div>
+        <div class="panel-body">
+          <div class="mount-list">
+            ${pages.map(([title, desc, tag]) => `
+              <div class="mount-item">
+                <strong>${esc(title)} ${badge(tag, tag === "当前页" ? "green" : "blue")}</strong>
+                <span>${esc(desc)}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderWorkbench() {
+      const a = currentAlarm();
+      $("view-workbench").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>省平台插件处置控制台</h1>
+            <p>首屏改为监控员真实工作位：省平台页面仍是主界面，AI 只作为右侧插件侧栏辅助读取、拦截危险动作、提示人工接管和写入台账。待确认规则、按钮权限未就绪、视频不可用不再被包装成成功闭环。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn" onclick="openEventModal(currentAlarm().id)">${icons.eye}<span>事件详情</span></button>
+            <button class="btn primary" onclick="runFailureDrill()">${icons.alert}<span>故障演练</span></button>
+          </div>
+        </div>
+        <div class="platform-banner">
+          <div><strong>嵌入模式：</strong>省平台页面 + 插件侧栏。后台页面只作为台账和配置补充，不是监控员首要工作入口。</div>
+          <span>当前示例故意保留按钮未授权、规则待确认、详情页未控权等生产阻断。</span>
+        </div>
+        <div class="embed-shell">
+          ${renderPlatformStage(a)}
+          <aside class="plugin-drawer">${renderChromeSidePanel(a)}</aside>
+        </div>
+        <div class="secondary-workbench">
+          <section class="panel">${renderMountPanel()}</section>
+          <section class="panel">${renderTrialPanel()}</section>
+        </div>
+      `;
+    }
+
+    function eventCandidates() {
+      return alarms.filter(a => a.event !== "未触发" || a.status === "待人工接管" || ["无法判断", "未纠正", "需人工复核"].includes(a.correction) || a.risk === "高");
+    }
+
+    function renderEvents() {
+      const list = eventCandidates();
+      if (!list.find(a => a.id === state.selectedEvent)) state.selectedEvent = list[0]?.id || alarms[0].id;
+      const selected = alarms.find(a => a.id === state.selectedEvent) || list[0] || alarms[0];
+      const eventAuthReady = checkReady("eventAuth");
+      const contactsReady = checkReady("contacts");
+      $("view-events").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>事件中心</h1>
+            <p>承接未纠正、无法判断、高风险、页面异常和视频不可用报警。短信只代表送达尝试，不代表值班人员已接收；详情页未完成身份校验和有效期控制时，只能展示脱敏信息。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn primary" onclick="notifyDuty()">${icons.phone}<span>发送当前事件</span></button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <section class="panel">
+            <div class="panel-head"><h2>待接收事件</h2>${badge(list.length + " 条", list.length ? "red" : "green")}</div>
+            <div class="panel-body">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>事件</th><th>车牌</th><th>报警类型</th><th>检测结果</th><th>通知状态</th><th>接收人</th><th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${list.map(a => `
+                      <tr>
+                        <td>${esc(a.id)}</td>
+                        <td><strong>${esc(a.vehicle)}</strong></td>
+                        <td>${esc(a.type)}</td>
+                        <td>${badge(a.correction)}</td>
+                        <td>${badge(a.event)}</td>
+                        <td>值班业务员 王敏</td>
+                        <td>
+                          <div class="table-actions">
+                            <button class="mini-action" onclick="selectEvent('${a.id}')">${icons.eye}<span>查看</span></button>
+                            <button class="mini-action primary" onclick="copyInfo('${a.id}', 'info')">${icons.copy}<span>复制</span></button>
+                          </div>
+                        </td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+          <aside class="detail-box">
+            <header>
+              <h3>事件详情页预览</h3>
+              <div class="badge-row">${badge(selected.event)}${eventAuthReady ? badge("访问受控", "green") : badge("链接未控权", "red")}</div>
+            </header>
+            <div class="body">
+              ${eventAuthReady ? "" : `<div class="blocker-note">详情页访问控制未就绪：完整车牌、驾驶员、地点、企业负责人话术和拨号入口均不得对短信链接开放。</div>`}
+              <div class="info-grid">
+                <div class="info"><span>车牌</span><strong>${esc(eventAuthReady ? selected.vehicle : selected.vehicle.replace(/(.{2}).+(\(.+\))/, "$1****$2"))}</strong></div>
+                <div class="info"><span>报警类型</span><strong>${esc(selected.type)}</strong></div>
+                <div class="info"><span>检测结果</span><strong>${esc(selected.correction)}</strong></div>
+                <div class="info"><span>风险等级</span><strong>${esc(selected.risk)}</strong></div>
+              </div>
+              <div class="section-title"><h3>关键信息包</h3><button class="mini-action ${eventAuthReady ? "" : "blocked-action"}" onclick="copyInfo('${selected.id}', 'info')">${icons.copy}<span>复制</span></button></div>
+              <div class="copy-block">${esc(eventAuthReady ? infoPack(selected) : maskedInfoPack(selected))}</div>
+              <div class="section-title"><h3>企业负责人话术</h3><button class="mini-action ${eventAuthReady && contactsReady ? "" : "blocked-action"}" onclick="copyInfo('${selected.id}', 'script')">${icons.copy}<span>复制</span></button></div>
+              <div class="copy-block">${esc(eventAuthReady && contactsReady ? selected.companyScript : "企业负责人话术已隐藏：详情页访问控制和企业通讯录均需就绪后才允许展示。")}</div>
+              <div class="section-title"><h3>人工动作</h3></div>
+              <div class="action-grid">
+                <button class="btn ${eventAuthReady ? "" : "blocked-action"}" onclick="markViewed('${selected.id}')">${icons.eye}<span>已查看</span></button>
+                <button class="btn primary ${eventAuthReady && contactsReady ? "" : "blocked-action"}" onclick="copyInfo('${selected.id}', 'script')">${icons.copy}<span>复制话术</span></button>
+                <button class="btn warn ${eventAuthReady && contactsReady ? "" : "blocked-action"}" onclick="dialCompany('${selected.id}')">${icons.phone}<span>人工拨号</span></button>
+                <button class="btn success ${eventAuthReady ? "" : "blocked-action"}" onclick="confirmManual('${selected.id}')">${icons.check}<span>确认接管</span></button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    function renderLedger() {
+      const keyword = state.globalSearch.trim().toLowerCase();
+      const rows = alarms.filter(a => !keyword || `${a.vehicle} ${a.company} ${a.type} ${a.driver}`.toLowerCase().includes(keyword));
+      const selected = currentAlarm();
+      const auditGaps = [
+        selected.read === "字段缺失" ? "原始 DOM 字段不完整" : "",
+        selected.video === "视频不可用" ? "视频帧证据缺失" : "",
+        selected.event !== "值班已接收" ? "值班人员身份和接收确认缺失" : "",
+        !checkReady("eventAuth") ? "详情页访问控制未就绪" : "",
+        "缺少服务端时间、证据哈希和不可篡改日志"
+      ].filter(Boolean);
+      $("view-ledger").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>处理记录台账</h1>
+            <p>当前只是可追溯记录原型，不等于可信审计系统。正式上线必须补服务端时间、原始证据哈希、操作者身份、不可篡改日志和导出验收格式。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn" onclick="makeRecord()">${icons.file}<span>生成当前记录</span></button>
+          </div>
+        </div>
+        <div class="split-layout">
+          <section class="panel">
+            <div class="panel-head"><h2>记录列表</h2>${badge(rows.length + " 条", "blue")}</div>
+            <div class="panel-body">
+              <div class="filter-row" style="padding:0 0 12px;border-bottom:0">
+                ${["时间范围", "车牌号", "企业名称", "报警类型", "处理状态", "值班人员"].map(item => `<span class="chip">${esc(item)}</span>`).join("")}
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>报警 ID</th><th>车牌</th><th>企业</th><th>报警类型</th><th>提醒方式</th><th>检测结果</th><th>短信</th><th>记录状态</th><th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map(a => `
+                      <tr>
+                        <td>${esc(a.id)}</td>
+                        <td><strong>${esc(a.vehicle)}</strong></td>
+                        <td>${esc(a.company)}</td>
+                        <td>${esc(a.type)}</td>
+                        <td>${badge(a.remind)}</td>
+                        <td>${badge(a.correction)}</td>
+                        <td>${badge(a.event)}</td>
+                        <td>${badge(a.record)}</td>
+                        <td><button class="mini-action" onclick="selectAlarm('${a.id}'); switchView('ledger')">${icons.eye}<span>追溯</span></button></td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+          <aside class="detail-box">
+            <header>
+              <h3>${esc(selected.vehicle)} 追溯</h3>
+              ${badge(selected.record)}
+            </header>
+            <div class="body">
+              <div class="source-list">
+                <div class="source-item"><span>字段来源</span><strong>${esc(selected.source)}</strong></div>
+                <div class="source-item"><span>按钮结果</span><strong>${esc(selected.remind)}</strong></div>
+                <div class="source-item"><span>纠正证据</span><strong>${esc(selected.video)}，置信度 ${selected.confidence}%</strong></div>
+                <div class="source-item"><span>人工接收</span><strong>${esc(selected.event)}</strong></div>
+              </div>
+              <div class="section-title"><h3>审计证据缺口</h3>${badge(auditGaps.length + " 项", auditGaps.length ? "red" : "green")}</div>
+              <div class="${auditGaps.length ? "blocker-note" : "assistant-note"}">${auditGaps.length ? auditGaps.map(item => `· ${esc(item)}`).join("<br>") : "当前记录具备归档所需的最小证据链。"}</div>
+              <div class="section-title"><h3>操作日志</h3></div>
+              <div class="timeline">
+                ${selected.timeline.map(item => `
+                  <div class="timeline-item">
+                    <time>${esc(item[0])}</time>
+                    <div><strong>${esc(item[1])}</strong><p>${esc(item[2])}</p></div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    function renderRules() {
+      const filters = ["全部", "已确认", "待确认", "口径差异", "高"];
+      const rows = rules.filter(r => state.ruleFilter === "全部" || r.status === state.ruleFilter || r.risk === state.ruleFilter);
+      $("view-rules").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>报警类型处置规则库</h1>
+            <p>规则库把官方报警规则、客户 SOP、系统建议动作和人工确认结果分层展示。官方“当日分析”类报警不机械等同于不提醒司机，需保留客户项目内口径边界。</p>
+          </div>
+          <div class="head-actions">
+            ${filters.map(f => chip(f, state.ruleFilter === f, f === "高" ? "red" : "", `setRuleFilter('${f}')`)).join("")}
+          </div>
+        </div>
+        <section class="panel">
+          <div class="panel-head"><h2>规则矩阵</h2>${badge(rows.length + " 类报警", "blue")}</div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>报警类型</th><th>官方口径</th><th>客户 SOP</th><th>首版提醒方式</th><th>已做到位判定</th><th>状态</th><th>风险</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(r => `
+                    <tr>
+                      <td><strong>${esc(r.type)}</strong></td>
+                      <td>${esc(r.official)}</td>
+                      <td>${esc(r.sop)}</td>
+                      <td>${badge(r.method)}</td>
+                      <td>${esc(r.correction)}</td>
+                      <td>${badge(r.status)}</td>
+                      <td>${badge(r.risk)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function setRuleFilter(value) {
+      state.ruleFilter = value;
+      render();
+    }
+
+    function renderScope() {
+      $("view-scope").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>首版范围与验收口径</h1>
+            <p>修复后的首版范围按客户真实风险收敛：先验证插件在省平台页面上的可靠性、异常兜底、SOP 硬拦截和证据留痕，不把后台管理能力包装成主交付。</p>
+          </div>
+        </div>
+        <div class="matrix">
+          <section class="scope-card">
+            <header><h3>P0 必做</h3>${badge("插件试运行", "green")}</header>
+            <ul>
+              <li>省平台页面侧栏插件，而不是新后台替代省平台</li>
+              <li>报警弹窗监听、报警列表兜底和详情读取失败提示</li>
+              <li>规则已确认才允许文本下发或语音对讲</li>
+              <li>按钮触发必须有回执；无回执不得写成功</li>
+              <li>无法判断、高风险、字段缺失直接进入人工接管</li>
+              <li>短信发送、详情页查看、复制、拨号分开记录</li>
+              <li>台账只做可追溯记录，可信审计另行建设</li>
+            </ul>
+          </section>
+          <section class="scope-card">
+            <header><h3>必须覆盖的边界</h3>${badge("上线前", "amber")}</header>
+            <ul>
+              <li>省平台登录过期、页面刷新、按钮灰掉、权限弹窗</li>
+              <li>同车多报警、重复弹窗、多标签页同时打开</li>
+              <li>视频黑屏、低码率、夜间红外、摄像头偏移</li>
+              <li>短信失败、无人查看、值班人员变更、链接转发</li>
+              <li>客户 SOP 版本变更、规则待确认、话术未审核</li>
+              <li>人工手动操作打断插件流程后的状态恢复</li>
+            </ul>
+          </section>
+          <section class="scope-card">
+            <header><h3>不纳入首版</h3>${badge("后置", "red")}</header>
+            <ul>
+              <li>重建完整监管平台或报警识别系统</li>
+              <li>自动误报申诉、正误报最终自动判定</li>
+              <li>日报、周报、月报和正式统计报表</li>
+              <li>管理看板、车辆巡检、驾驶员画像、企业排名</li>
+              <li>无人值守自动外呼和录音归档</li>
+              <li>企业微信深度集成和移动端完整接手工作流</li>
+            </ul>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderIntegration() {
+      const readyCount = Object.values(state.checks).filter(Boolean).length;
+      const blockers = readiness.filter(item => !state.checks[item[0]]);
+      const trialMetrics = [
+        ["报警读取成功率", "按真实报警样本统计弹窗监听、列表兜底和详情读取成功率。", "目标需客户确认"],
+        ["按钮回执成功率", "文本下发、语音对讲、查看报警必须有省平台可见回执。", "P0 核心"],
+        ["无法判断兜底率", "证据不足时进入人工确认，不得误写成已纠正。", "P0 核心"],
+        ["短信接收确认率", "发送、打开、身份确认、复制、拨号分开计数。", "组织风险"],
+        ["证据留存完整率", "截图、视频帧、话术、按钮结果、人工备注齐全。", "验收风险"]
+      ];
+      $("view-integration").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>接入检查</h1>
+            <p>把客户配合事项转为上线前阻断清单和试运行指标。开关只用于原型演示成熟度变化，不代表真实权限已开通。</p>
+          </div>
+          <div class="head-actions">${badge(`${readyCount}/${readiness.length} 已就绪`, readyCount === readiness.length ? "green" : "amber")}</div>
+        </div>
+        ${blockers.length ? `<div class="blocker-note" style="margin-bottom:14px">当前不得上线：${blockers.map(item => esc(item[1])).join("、")} 未就绪。</div>` : `<div class="assistant-note" style="margin-bottom:14px">接入项已全部标记就绪，仍需通过真实样本试运行后才能进入验收。</div>`}
+        <section class="panel">
+          <div class="panel-head"><h2>上线前配置</h2>${badge("浏览器插件首版", "blue")}</div>
+          <div class="panel-body">
+            <div class="readiness">
+              ${readiness.map(item => `
+                <div class="check-row">
+                  <div><strong>${esc(item[1])}</strong><span>${esc(item[2])}</span></div>
+                  <button class="switch ${state.checks[item[0]] ? "on" : ""}" title="切换就绪状态" onclick="toggleCheck('${item[0]}')"></button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </section>
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>试运行验收指标</h2>${badge("不可跳过", "red")}</div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>指标</th><th>验收含义</th><th>风险级别</th></tr>
+                </thead>
+                <tbody>
+                  ${trialMetrics.map(item => `
+                    <tr>
+                      <td><strong>${esc(item[0])}</strong></td>
+                      <td>${esc(item[1])}</td>
+                      <td>${badge(item[2], item[2] === "P0 核心" ? "red" : "amber")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function toggleCheck(key) {
+      state.checks[key] = !state.checks[key];
+      toast("接入状态已更新", state.checks[key] ? "该项已标记为就绪。" : "该项已标记为待确认。");
+      render();
+    }
+
+    function infoPack(a) {
+      return `车牌：${a.vehicle}
+企业：${a.company}
+驾驶员：${a.driver}
+报警类型：${a.type}
+报警时间：${a.time}
+地点：${a.location}
+速度：${a.speed} km/h
+提醒方式：${a.remind}
+纠正检测：${a.correction}
+当前状态：${a.status}`;
+    }
+
+    function maskedInfoPack(a) {
+      return `车牌：${a.vehicle.replace(/(.{2}).+(\(.+\))/, "$1****$2")}
+企业：${a.company.slice(0, 4)}****
+驾驶员：${a.driver.slice(0, 1)}**
+报警类型：${a.type}
+报警时间：${a.time}
+地点：${a.location.split(" ")[0]}****
+提醒方式：${a.remind}
+纠正检测：${a.correction}
+当前状态：${a.status}
+
+完整信息被隐藏：短信详情页访问控制、有效期或身份校验未就绪。`;
+    }
+
+    function selectEvent(id) {
+      state.selectedEvent = id;
+      state.selectedAlarm = id;
+      render();
+    }
+
+    function captureAlarm() {
+      const a = currentAlarm();
+      if (a.capture === "已捕获") {
+        toast("弹窗已捕获", `${a.vehicle} 已在报警队列中。`);
+        return;
+      }
+      a.capture = "已捕获";
+      a.status = "待处置";
+      addTimeline(a, "报警弹窗捕获", `插件捕获 ${a.vehicle} 的 ${a.type}，已读取弹窗入口。`);
+      toast("报警弹窗已捕获", "车牌、报警类型、报警时间和查看入口已写入暂存记录。");
+      render();
+    }
+
+    function readDetail() {
+      const a = currentAlarm();
+      if (a.capture === "未监听") {
+        toast("需要先监听报警", "先捕获弹窗或从报警列表兜底读取，再打开详情。");
+        return;
+      }
+      if (a.video === "视频不可用") {
+        a.read = "字段缺失";
+        a.status = "待人工接管";
+        addTimeline(a, "报警详情读取异常", "视频不可用或 DOM 字段缺失，系统提示人工接管。");
+        toast("详情读取异常", "字段缺失不能自动补全，已进入人工接管。");
+      } else {
+        a.read = "详情已读取";
+        addTimeline(a, "报警详情读取", "已读取速度、位置、车辆状态、视频状态和页面按钮状态。");
+        toast("详情读取完成", "页面字段已按来源标记，等待规则匹配。");
+      }
+      render();
+    }
+
+    function matchRule() {
+      const a = currentAlarm();
+      if (a.read === "未读取") {
+        toast("需要先读取详情", "规则匹配需要报警详情字段作为事实输入。");
+        return;
+      }
+      const r = rules.find(item => item.type === a.type);
+      if (!r) {
+        a.rule = "未配置";
+        blockAction(a, "规则匹配失败", "当前报警类型未配置处置规则，必须人工接管。", "待人工接管");
+        return;
+      }
+      a.rule = r.status === "已确认" ? "规则已匹配" : r.status === "口径差异" ? "口径差异" : "待规则确认";
+      if (a.rule === "口径差异") a.status = "待规则确认";
+      if (a.rule === "待规则确认") a.status = "待规则确认";
+      addTimeline(a, "规则与 SOP 匹配", `命中 ${a.type}：${r.method}；规则状态：${r.status}。`);
+      toast(a.rule === "规则已匹配" ? "规则已匹配" : "规则阻断", a.rule === "规则已匹配" ? "已输出首版建议动作。" : "规则未确认，禁止自动触发司机提醒。");
+      render();
+    }
+
+    function sendVoice() {
+      const a = currentAlarm();
+      if (a.rule !== "规则已匹配") {
+        blockAction(a, "语音对讲被阻断", "规则未确认或存在口径差异，不能自动触发司机提醒。", "待规则确认");
+        return;
+      }
+      const blockers = actionBlockers(a);
+      if (blockers.length) {
+        blockAction(a, "语音对讲被阻断", blockers.join("；"), blockers.includes("省平台按钮触发权限未就绪") ? "按钮待授权" : "待人工接管");
+        return;
+      }
+      a.remind = "语音对讲已播放";
+      a.status = "已提醒";
+      addTimeline(a, "语音对讲提醒", `通过省平台语音对讲入口播放固定话术：${a.script}`);
+      toast("语音对讲已触发", "固定审核话术已播放，等待纠正检测。");
+      render();
+    }
+
+    function sendText() {
+      const a = currentAlarm();
+      if (a.rule !== "规则已匹配") {
+        blockAction(a, "文本下发被阻断", "规则未确认或存在口径差异，不能自动触发文本提醒。", "待规则确认");
+        return;
+      }
+      const blockers = actionBlockers(a);
+      if (blockers.length) {
+        blockAction(a, "文本下发被阻断", blockers.join("；"), blockers.includes("省平台按钮触发权限未就绪") ? "按钮待授权" : "待人工接管");
+        return;
+      }
+      a.remind = a.remind === "语音对讲已播放" ? "语音+文本已提醒" : "文本已下发";
+      a.status = "已提醒";
+      addTimeline(a, "文本下发", `通过省平台文本下发入口发送固定模板：${a.script}`);
+      toast("文本已下发", "文本提醒动作和话术已写入台账。");
+      render();
+    }
+
+    function observeCorrection() {
+      const a = currentAlarm();
+      if (a.remind === "未提醒" && !["设备故障报警", "疑似事故报警"].includes(a.type)) {
+        toast("需要先提醒司机", "驾驶行为类报警应先按规则提醒，再观察是否纠正。");
+        return;
+      }
+      if (a.video === "视频不可用" || a.confidence < 65) {
+        a.correction = "无法判断";
+        a.status = "待人工接管";
+        addTimeline(a, "纠正检测无法判断", "视频不可用、低清或置信度不足，不能默认通过。");
+        toast("无法判断", "已标记为人工接管，并建议短信通知值班人员。");
+      } else if (a.risk === "高") {
+        a.correction = "需人工复核";
+        a.status = "待人工接管";
+        addTimeline(a, "高风险复核阻断", "高风险报警不能由 AI 直接给出闭环结论，需值班业务人员人工复核。");
+        toast("需人工复核", "高风险报警进入事件升级，AI 不给出自动通过结论。");
+      } else {
+        a.correction = "已纠正";
+        a.status = "待归档";
+        addTimeline(a, "纠正检测通过", "视频帧和页面状态显示报警风险已解除。");
+        toast("已纠正", "可生成 AI 处理记录并归档。");
+      }
+      render();
+    }
+
+    function notifyDuty() {
+      const a = currentAlarm();
+      if (!checkReady("sms")) {
+        blockAction(a, "短信通知被阻断", "短信通道未就绪，不能把通知写成已发送。", "待人工接管");
+        return;
+      }
+      if (a.event === "短信已发送" || a.event === "值班已接收") {
+        addTimeline(a, "重复通知被拦截", "事件已发送短信，不能用再次点击模拟值班人员已查看。");
+        toast("不能代替接收", "短信发送不等于值班已接收，请在事件详情中执行查看确认。");
+      } else {
+        a.event = "短信已发送";
+        a.status = "待人工接管";
+        addTimeline(a, "值班短信通知", `短信已发送：${a.vehicle} ${a.type} ${a.correction}。`);
+        toast("短信已发送", "值班业务人员将从详情页复制信息、拨打企业负责人并记录结果。");
+      }
+      state.selectedEvent = a.id;
+      render();
+    }
+
+    function makeRecord() {
+      const a = currentAlarm();
+      if (a.read === "字段缺失" || a.video === "视频不可用") {
+        a.record = "待补证";
+        addTimeline(a, "记录生成受限", "字段或视频证据缺失，记录保存为待补证状态。");
+        toast("记录待补证", "异常原因已写入台账，不能自动归档。");
+      } else if (["待规则确认", "口径差异"].includes(a.rule) || ["未纠正", "无法判断", "需人工复核"].includes(a.correction)) {
+        a.record = "待人工确认";
+        addTimeline(a, "记录生成受限", "规则未确认或检测结果未闭环，仅生成待人工确认记录。");
+        toast("记录待人工确认", "不能归档为闭环记录。");
+      } else {
+        a.record = "已生成";
+        if (a.status === "待归档") a.status = "已归档";
+        addTimeline(a, "AI 处理记录生成", "已记录报警读取、规则匹配、司机提醒、纠正检测、短信和人工动作。");
+        toast("处理记录已生成", "该报警已经进入 AI 处理记录台账。");
+      }
+      render();
+    }
+
+    function runFailureDrill() {
+      const a = currentAlarm();
+      if (a.capture === "未监听") return captureAlarm();
+      if (a.read === "未读取") return readDetail();
+      if (a.rule === "未匹配") return matchRule();
+      const blockers = actionBlockers(a);
+      if (blockers.length || a.rule !== "规则已匹配") {
+        blockAction(a, "故障演练命中阻断", blockers.length ? blockers.join("；") : "规则未确认，不能继续自动处置。", a.rule === "规则已匹配" ? "待人工接管" : "待规则确认");
+        return;
+      }
+      if (a.remind === "未提醒" && a.type !== "设备故障报警") return sendVoice();
+      if (a.correction === "未判断") return observeCorrection();
+      if (["未纠正", "无法判断", "需人工复核"].includes(a.correction) || a.risk === "高") return notifyDuty();
+      if (a.record === "未生成") return makeRecord();
+    }
+
+    function copyInfo(id, type) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      if (!checkReady("eventAuth")) {
+        addTimeline(a, "复制动作被阻断", "短信详情页访问控制未就绪，禁止复制完整关键信息或企业话术。");
+        toast("复制被阻断", "请先在接入检查中完成详情页身份校验、有效期和脱敏策略。");
+        render();
+        return;
+      }
+      if (type === "script" && !checkReady("contacts")) {
+        addTimeline(a, "话术复制被阻断", "企业负责人通讯录未就绪，禁止生成可外呼的话术。");
+        toast("话术复制被阻断", "企业联系人来源和维护机制未确认。");
+        render();
+        return;
+      }
+      const text = type === "script" ? a.companyScript : infoPack(a);
+      copyText(text);
+      addTimeline(a, type === "script" ? "复制企业话术" : "复制关键信息", "值班业务人员在事件详情页执行复制操作。");
+      toast("已复制", type === "script" ? "企业负责人沟通话术已复制。" : "关键信息包已复制。");
+      render();
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.left = "-999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+
+    function markViewed(id) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      if (!checkReady("eventAuth")) {
+        blockAction(a, "查看确认被阻断", "详情页访问控制未就绪，不能把短信链接打开记录为已接收。", "待人工接管");
+        return;
+      }
+      a.event = "值班已接收";
+      addTimeline(a, "详情页查看", "值班业务人员已查看事件详情。");
+      toast("详情页已查看", "查看动作已写入 AI 处理记录。");
+      render();
+    }
+
+    function dialCompany(id) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      if (!checkReady("eventAuth") || !checkReady("contacts")) {
+        blockAction(a, "人工拨号被阻断", "详情页访问控制或企业负责人通讯录未就绪，不能展示拨号入口。", "待人工接管");
+        return;
+      }
+      addTimeline(a, "人工拨打企业负责人", "值班业务人员点击人工拨号入口，系统记录拨打动作。");
+      toast("拨号动作已记录", "首版只提供人工拨号入口，不执行无人值守自动外呼。");
+      render();
+    }
+
+    function confirmManual(id) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      if (!checkReady("eventAuth")) {
+        blockAction(a, "人工接管被阻断", "没有可确认的值班人员身份，不能写入人工已接管。", "待人工接管");
+        return;
+      }
+      a.event = "值班已接收";
+      a.status = "人工确认中";
+      addTimeline(a, "人工确认接管", "值班业务人员已接管事件，等待企业反馈或后续跟进。");
+      toast("人工已接管", "接管动作已写入台账。");
+      render();
+    }
+
+    function openAlarmDetailModal(id) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      const rule = currentRule(a);
+      $("modalTitle").textContent = `${a.type} · ${a.vehicle}`;
+      $("modalBody").innerHTML = `
+        <div class="evidence-layout">
+          <div>
+            <div class="visual">
+              <img src="${esc(a.frame)}" alt="省平台报警详情截图">
+              <div class="visual-overlay">
+                <span class="hud-tag"><i class="dot"></i>${esc(a.video)}</span>
+                <span class="hud-tag">${esc(a.source)}</span>
+              </div>
+            </div>
+            <div class="section-title"><h3>处置时间线</h3>${badge(a.record)}</div>
+            <div class="timeline">
+              ${a.timeline.map(item => `
+                <div class="timeline-item">
+                  <time>${esc(item[0])}</time>
+                  <div><strong>${esc(item[1])}</strong><p>${esc(item[2])}</p></div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+          <div>
+            <div class="info-grid">
+              <div class="info"><span>所属企业</span><strong>${esc(a.company)}</strong></div>
+              <div class="info"><span>驾驶员</span><strong>${esc(a.driver)}</strong></div>
+              <div class="info"><span>报警时间</span><strong>${esc(a.time)}</strong></div>
+              <div class="info"><span>当前速度</span><strong>${esc(a.speed)} km/h</strong></div>
+              <div class="info"><span>报警地点</span><strong>${esc(a.location)}</strong></div>
+              <div class="info"><span>置信度</span><strong>${esc(a.confidence)}%</strong></div>
+            </div>
+            <div class="section-title"><h3>规则与处置</h3>${badge(a.rule)}</div>
+            <div class="source-list">
+              <div class="source-item"><span>官方口径</span><strong>${esc(rule?.official || "未配置")}</strong></div>
+              <div class="source-item"><span>客户 SOP</span><strong>${esc(rule?.sop || "待确认")}</strong></div>
+              <div class="source-item"><span>司机提醒</span><strong>${esc(a.remind)}</strong></div>
+              <div class="source-item"><span>纠正检测</span><strong>${esc(a.correction)}</strong></div>
+            </div>
+            <div class="section-title"><h3>当前建议</h3></div>
+            <div class="assistant-note">${esc(a.next)}</div>
+          </div>
+        </div>
+      `;
+      $("modalFoot").innerHTML = `
+        <button class="btn" onclick="copyInfo('${a.id}', 'info')">${icons.copy}<span>复制信息</span></button>
+        <button class="btn primary" onclick="switchView('ledger'); closeModal()">${icons.file}<span>查看台账</span></button>
+        <button class="btn" onclick="closeModal()">关闭</button>
+      `;
+      $("modalBackdrop").classList.add("show");
+    }
+
+    function openEventModal(id) {
+      const a = alarms.find(item => item.id === id) || currentAlarm();
+      $("modalTitle").textContent = `${a.vehicle} 事件详情`;
+      const eventAuthReady = checkReady("eventAuth");
+      const contactsReady = checkReady("contacts");
+      $("modalBody").innerHTML = `
+        ${eventAuthReady ? "" : `<div class="blocker-note">访问控制未就绪：该弹层只展示脱敏信息。生产版本必须校验值班人员身份、链接有效期、访问范围和操作日志。</div>`}
+        <div class="info-grid">
+          <div class="info"><span>报警类型</span><strong>${esc(a.type)}</strong></div>
+          <div class="info"><span>所属企业</span><strong>${esc(eventAuthReady ? a.company : a.company.slice(0, 4) + "****")}</strong></div>
+          <div class="info"><span>驾驶员</span><strong>${esc(eventAuthReady ? a.driver : a.driver.slice(0, 1) + "**")}</strong></div>
+          <div class="info"><span>检测结果</span><strong>${esc(a.correction)}</strong></div>
+        </div>
+        <div class="section-title"><h3>关键信息包</h3></div>
+        <div class="copy-block">${esc(eventAuthReady ? infoPack(a) : maskedInfoPack(a))}</div>
+        <div class="section-title"><h3>企业负责人话术</h3></div>
+        <div class="copy-block">${esc(eventAuthReady && contactsReady ? a.companyScript : "企业负责人话术已隐藏：详情页访问控制和企业通讯录均需就绪后才允许展示。")}</div>
+        <div class="section-title"><h3>处置时间线</h3></div>
+        <div class="timeline">
+          ${a.timeline.map(item => `<div class="timeline-item"><time>${esc(item[0])}</time><div><strong>${esc(item[1])}</strong><p>${esc(item[2])}</p></div></div>`).join("")}
+        </div>
+      `;
+      $("modalFoot").innerHTML = `
+        <button class="btn ${eventAuthReady ? "" : "blocked-action"}" onclick="copyInfo('${a.id}', 'info')">${icons.copy}<span>复制信息</span></button>
+        <button class="btn primary ${eventAuthReady && contactsReady ? "" : "blocked-action"}" onclick="copyInfo('${a.id}', 'script')">${icons.copy}<span>复制话术</span></button>
+        <button class="btn warn ${eventAuthReady && contactsReady ? "" : "blocked-action"}" onclick="dialCompany('${a.id}')">${icons.phone}<span>人工拨号</span></button>
+        <button class="btn" onclick="closeModal()">关闭</button>
+      `;
+      $("modalBackdrop").classList.add("show");
+    }
+
+    function closeModal() {
+      $("modalBackdrop").classList.remove("show");
+    }
+
+    function backdropClose(event) {
+      if (event.target.id === "modalBackdrop") closeModal();
+    }
+
+    function simulateAlarm() {
+      const sample = {
+        id: `ALM-20260621-${Math.floor(1200 + Math.random() * 7000)}`,
+        vehicle: "演示车辆-05",
+        company: "示例客运企业 E",
+        driver: "陈某",
+        type: "接打手持电话报警",
+        time: "2026-06-21 14:42:18",
+        location: "示例高速路段 K1032+200",
+        speed: 54,
+        risk: "中",
+        status: "待处置",
+        capture: "已捕获",
+        read: "未读取",
+        rule: "未匹配",
+        remind: "未提醒",
+        correction: "未判断",
+        event: "未触发",
+        record: "未生成",
+        source: "省平台实时报警弹窗",
+        video: "视频可用",
+        confidence: 74,
+        frame: demoFrame,
+        next: "语音对讲优先，观察驾驶员是否停止接打手持电话",
+        script: "请立即停止接打手持电话，保持注意力集中，规范驾驶。",
+        companyScript: "贵司演示车辆-05 发生接打手持电话报警，平台将按固定话术提醒司机，并观察是否纠正。",
+        timeline: [["14:42:18", "模拟新报警", "省平台弹窗已被插件捕获，等待详情读取。"]]
+      };
+      alarms.unshift(sample);
+      state.selectedAlarm = sample.id;
+      state.queueFilter = "全部";
+      toast("模拟新报警", `${sample.vehicle} 已进入实时报警队列。`);
+      render();
+    }
+
+    function render() {
+      renderNav();
+      if (state.activeView === "workbench") renderWorkbench();
+      if (state.activeView === "events") renderEvents();
+      if (state.activeView === "ledger") renderLedger();
+      if (state.activeView === "rules") renderRules();
+      if (state.activeView === "scope") renderScope();
+      if (state.activeView === "integration") renderIntegration();
+      document.querySelectorAll(".view").forEach(node => node.classList.remove("active"));
+      $(`view-${state.activeView}`).classList.add("active");
+    }
+
+    $("globalSearch").addEventListener("input", event => {
+      state.globalSearch = event.target.value;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

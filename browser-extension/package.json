@@ -1,0 +1,14 @@
+{
+  "name": "hn-alarm-browser-collector",
+  "version": "0.5.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node collector-server.mjs",
+    "analyze:contracts": "node analyze-collector-contracts.mjs",
+    "compact:data": "node compact-collector-data.mjs",
+    "verify:real": "node verify-real-contracts.mjs",
+    "migrate:data": "node migrate-collector-data.mjs",
+    "test": "node --test --test-concurrency=1"
+  }
+}

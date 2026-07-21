@@ -1,0 +1,95 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>湖南省交通运输“三客一危”智能监管平台 · 本地契约沙箱</title>
+  <link rel="stylesheet" href="{% static 'platform_sim/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'platform_sim/sandbox-controls.css' %}">
+</head>
+<body>
+  <div class="sandbox-bar">
+    <div><b>LOCAL CONTRACT SANDBOX</b><span>仅模拟已知接口与交互，不代表真实省平台契约</span></div>
+    <label>场景<select id="scenarioSelect"></select></label>
+    <button id="applyScenario">应用场景</button>
+    <button id="triggerAlarm" class="danger">触发新报警</button>
+    <button id="resetSandbox">重置</button>
+    <a class="asset-link" href="/sandbox/assets/audio-sandbox-v1.wav">测试音频</a>
+    <a class="asset-link" href="/sandbox/assets/rules.json">测试规则</a>
+    <span id="sandboxStatus" class="sandbox-status">正在连接…</span>
+  </div>
+
+  <header class="platform-header">
+    <div class="platform-brand"><span class="brand-orbit"></span><strong>湖南省交通运输“三客一危”智能监管平台</strong></div>
+    <div class="header-actions"><a href="#">下载列表</a><label>报警弹窗 <i class="toggle on"></i></label><label>红码上线 <i class="toggle on"></i></label><time>2026-06-17 19:28:45</time><span class="bell">♟<em>39</em></span><span>值班员</span></div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav>
+        <a><i>▦</i>数据看板</a><a><i>⌖</i>车辆监控</a><a class="active"><i>⚠</i>报警申诉处理/跟踪</a>
+        <div class="nav-group">报警中心</div><a><i>◫</i>报警查询</a><a><i>◌</i>未处置报警</a><a><i>◈</i>报警预处理</a>
+        <a><i>✓</i>简单单处理 <b class="count">7</b></a><a><i>▤</i>简单单档案</a><a><i>!</i>异常数据申诉 <b class="count">25</b></a>
+        <a><i>▥</i>车辆台账管理</a><a><i>◇</i>稽查督办</a><a><i>⌕</i>稽查管理</a><a><i>▱</i>信息发布</a>
+        <a><i>⌁</i>运营管理</a><a><i>▧</i>报表中心</a><a><i>◴</i>预警查询</a><a><i>≡</i>运维管理</a>
+        <a><i>◎</i>车辆审核管理</a><a><i>⚙</i>系统设置</a><a><i>▣</i>设备动态管理</a><a><i>◉</i>值班值守监控</a>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <div class="crumbs">首页 <span>›</span> 报警中心 <span>›</span> <b>报警申诉处理/跟踪</b></div>
+      <section class="query-panel">
+        <div class="filters">
+          <label>报警ID<input id="filterAlarmId" placeholder="请输入报警ID"></label>
+          <label>所属机构<select id="filterCompany"><option value="">请选择所属机构</option><option value="test-company-a">测试客运企业A</option><option value="test-company-b">测试客运企业B</option></select></label>
+          <label>车牌号<input id="filterVehicle" placeholder="请输入车牌号"></label>
+          <label>驾驶员<input id="filterDriver" placeholder="请输入驾驶员"></label>
+          <label>车辆状态<select><option>未知　ⓘ　+10</option></select></label>
+          <label>报警类型<select id="filterAlarmType"><option value="">请选择报警类型</option></select></label>
+          <label>审核状态<select><option>待审核</option><option>审核中</option><option>已审核</option></select></label>
+          <label class="time-range">报警时间<div><input value="2026-06-17 00:00:00"><span>—</span><input value="2026-06-17 23:59:59"></div></label>
+          <div class="filter-actions"><button id="queryButton" class="primary">⌕ 查询</button><button id="exportButton">⇩ 导出</button></div>
+        </div>
+      </section>
+
+      <section class="table-card">
+        <div id="tableLoading" class="loading">正在读取报警列表…</div>
+        <div class="table-scroll">
+          <table id="alarm-table">
+            <thead><tr><th>状态</th><th>报警ID</th><th>类型</th><th>车牌号</th><th>终端版本</th><th>驾驶员</th><th>报警类型</th><th>报警详情</th><th>定位速度<br>(公里/时)</th><th>脉冲速度<br>(公里/时)</th><th>车型类型</th><th>所属企业</th><th>操作</th></tr></thead>
+            <tbody id="alarmTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination"><button disabled>上一页</button><button class="current">1</button><button>2</button><button>3</button><button>下一页</button><span>共 <b id="totalRows">30</b> 条</span><select><option>10条/页</option></select><span>前往</span><input value="1"><span>页</span></div>
+      </section>
+
+      <section class="evidence-card">
+        <h2>报警证据 <span id="selectedAlarmLabel">请选择一条报警</span></h2>
+        <div class="evidence-grid">
+          <div class="map-mock"><div class="road road-a"></div><div class="road road-b"></div><span class="map-label village">模拟地标A</span><span class="map-label park">模拟地标B</span><span class="terminal-pin">终</span><small>地图示意 · 非真实定位</small></div>
+          <div class="camera-frame"><div class="driver"><span class="head"></span><span class="body"></span></div><div class="camera-hud">CH01　2026-06-17 19:28:10</div></div>
+          <div class="camera-frame video"><div class="driver side"><span class="head"></span><span class="body"></span></div><button class="play">▶</button><div class="video-controls">▶　●━━━━　0:00　⌗</div></div>
+          <div class="chart"><div class="legend"><i class="blue"></i>定位速度 <i class="purple"></i>脉冲 <i class="orange"></i>油门 <i class="green"></i>刹车</div><svg viewBox="0 0 520 150" role="img" aria-label="速度时序折线图"><g class="grid-lines"><path d="M38 22H500M38 57H500M38 92H500M38 127H500"/><path d="M38 15V127M154 15V127M270 15V127M386 15V127M500 15V127"/></g><polyline class="speed-line" points="38,58 154,58 270,57 386,59 500,59"/><polyline class="pedal-line" points="38,123 154,123 270,122 386,123 500,123"/><g class="axis"><text x="28" y="145">53:10</text><text x="144" y="145">53:11</text><text x="260" y="145">53:12</text><text x="376" y="145">53:13</text><text x="480" y="145">53:14</text></g></svg></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside id="sandbox-alarm-popup" class="alarm-popup hidden" role="alertdialog" aria-label="新报警弹窗">
+    <div class="popup-head"><span class="pulse"></span><strong>发现新报警</strong><button data-close-popup>×</button></div>
+    <div class="popup-body"><div><span>车牌</span><b data-popup-field="vehicleNo">-</b></div><div><span>报警类型</span><b data-popup-field="alarmName">-</b></div><div><span>报警时间</span><b data-popup-field="alarmTime">-</b></div><div><span>所属企业</span><b data-popup-field="companyName">-</b></div></div>
+    <div class="popup-actions"><button id="popupIntercom">模拟对讲</button><button id="popupDetail" class="primary">查看详情</button></div>
+  </aside>
+
+  <div id="detailBackdrop" class="modal-backdrop hidden">
+    <section class="alarm-detail-dialog" role="dialog" aria-modal="true">
+      <header><div><small>ALARM EVIDENCE</small><h2>报警详情</h2></div><button id="closeDetail">×</button></header>
+      <div id="detailContent" class="modal-content"></div>
+      <footer><button id="detailIntercom">模拟语音对讲</button><button id="closeDetailBottom" class="primary">关闭</button></footer>
+    </section>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="{% static 'platform_sim/app.js' %}"></script>
+</body>
+</html>

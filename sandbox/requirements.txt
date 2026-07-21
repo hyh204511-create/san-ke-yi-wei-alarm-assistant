@@ -1,0 +1,7 @@
+Django>=5.2,<5.3
+openpyxl>=3.1,<4
+reportlab>=4.0,<5
+cryptography>=42,<46
+psycopg[binary]>=3.2,<4
+gunicorn>=23,<24; platform_system != "Windows"
+waitress>=3.0,<4; platform_system == "Windows"

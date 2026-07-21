@@ -1,0 +1,3049 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>三客一危平台 AI 报警干预助手 - 高保真交互原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-2: #f8fbff;
+      --line: #dce5ef;
+      --line-strong: #c7d4e3;
+      --text: #17212b;
+      --muted: #667789;
+      --muted-2: #8a99a8;
+      --blue: #1464ff;
+      --blue-2: #0b52d6;
+      --blue-soft: #e8f0ff;
+      --cyan: #0aa6c8;
+      --green: #159a5c;
+      --green-soft: #e8f8ef;
+      --amber: #b76a00;
+      --amber-soft: #fff3df;
+      --red: #d9324b;
+      --red-soft: #ffe8ec;
+      --violet: #6c4bd8;
+      --violet-soft: #f0ecff;
+      --shadow: 0 18px 48px rgba(31, 50, 76, 0.10);
+      --radius: 8px;
+      --sidebar: #0d1b2a;
+      --sidebar-2: #10253a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 236px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      background: linear-gradient(180deg, var(--sidebar), var(--sidebar-2));
+      color: #d9e8f7;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 8px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #2dd4ff, #1464ff 62%, #6c4bd8);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 4px;
+      color: #8fb1ce;
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      color: #b9cbe0;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 12px;
+      text-align: left;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: rgba(255, 255, 255, 0.10);
+      color: #fff;
+    }
+
+    .nav svg {
+      width: 18px;
+      height: 18px;
+      stroke-width: 2;
+    }
+
+    .sidebar-card {
+      margin-top: auto;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .sidebar-card b {
+      display: block;
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .sidebar-card span {
+      display: block;
+      margin-top: 7px;
+      color: #a8bed5;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 68px 1fr;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 24px;
+      background: rgba(244, 247, 251, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .crumb {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .crumb strong {
+      color: var(--text);
+      font-size: 17px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .search {
+      width: 280px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 0 12px;
+      color: var(--text);
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      min-height: 38px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: var(--line-strong);
+      box-shadow: 0 8px 20px rgba(31, 50, 76, 0.08);
+    }
+
+    .btn.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: var(--red);
+      background: var(--red);
+      color: #fff;
+    }
+
+    .btn.success {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .btn.warn {
+      border-color: #d9951f;
+      background: #d9951f;
+      color: #fff;
+    }
+
+    .btn.icon {
+      width: 38px;
+      padding: 0;
+    }
+
+    .btn svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2.1;
+    }
+
+    .view {
+      display: none;
+      padding: 22px 24px 32px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 18px;
+    }
+
+    .page-head h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .page-head p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .seg {
+      display: inline-flex;
+      padding: 4px;
+      border-radius: 8px;
+      background: #e8edf4;
+      gap: 4px;
+    }
+
+    .seg button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 30px;
+      padding: 0 11px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 650;
+      font-size: 13px;
+    }
+
+    .seg button.active {
+      color: var(--blue);
+      background: #fff;
+      box-shadow: 0 1px 5px rgba(28, 48, 80, 0.10);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 14px;
+      box-shadow: 0 8px 20px rgba(31, 50, 76, 0.04);
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 12px;
+      display: block;
+    }
+
+    .stat strong {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 9px;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .stat em {
+      font-style: normal;
+      color: var(--muted-2);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .workbench {
+      display: grid;
+      grid-template-columns: 344px minmax(440px, 1fr) 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(31, 50, 76, 0.05);
+      min-width: 0;
+    }
+
+    .card-head {
+      min-height: 54px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .card-head h2,
+    .card-head h3 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .card-body {
+      padding: 16px;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .chip.active,
+    .chip.blue {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .chip.red {
+      border-color: #ffccd4;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .chip.amber {
+      border-color: #ffe0a7;
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .chip.green {
+      border-color: #c8efd8;
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .alarm-list {
+      max-height: calc(100vh - 244px);
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .alarm-item {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      padding: 12px;
+      text-align: left;
+      margin-bottom: 8px;
+    }
+
+    .alarm-item:hover {
+      background: #f6f9fd;
+      border-color: var(--line);
+    }
+
+    .alarm-item.active {
+      background: var(--blue-soft);
+      border-color: #b9cdfd;
+    }
+
+    .alarm-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .alarm-top strong {
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .alarm-meta {
+      margin-top: 8px;
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 750;
+      background: #eef3f8;
+      color: var(--muted);
+    }
+
+    .badge.red {
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .badge.amber {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .badge.green {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .badge.blue {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .badge.violet {
+      background: var(--violet-soft);
+      color: var(--violet);
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .info {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+      padding: 10px;
+      min-height: 70px;
+    }
+
+    .info span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .info strong {
+      display: block;
+      margin-top: 7px;
+      font-size: 15px;
+      line-height: 1.24;
+    }
+
+    .evidence-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 12px;
+    }
+
+    .video-panel {
+      min-height: 340px;
+      border-radius: 8px;
+      border: 1px solid #16283a;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255,255,255,0.05) 1px, transparent 1px),
+        radial-gradient(circle at 38% 36%, rgba(20,100,255,0.16), transparent 30%),
+        #071421;
+      background-size: 36px 36px, 36px 36px, auto, auto;
+      position: relative;
+      overflow: hidden;
+      color: #d6e9f6;
+    }
+
+    .video-panel::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 30%;
+      width: 160px;
+      height: 190px;
+      transform: translateX(-50%);
+      border-radius: 52% 52% 40% 40%;
+      background: linear-gradient(180deg, rgba(222,232,238,0.42), rgba(102,129,150,0.24));
+      box-shadow: 0 0 0 80px rgba(255,255,255,0.02);
+    }
+
+    .video-panel::after {
+      content: "";
+      position: absolute;
+      left: 46%;
+      bottom: 42px;
+      width: 250px;
+      height: 120px;
+      transform: translateX(-50%);
+      border-radius: 80px 80px 0 0;
+      background: linear-gradient(180deg, rgba(55,74,95,0.82), rgba(26,39,54,0.92));
+    }
+
+    .video-hud {
+      position: absolute;
+      inset: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .hud-tag {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.42);
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+
+    .hud-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 0 4px rgba(217, 50, 75, 0.20);
+    }
+
+    .evidence-side {
+      display: grid;
+      gap: 12px;
+    }
+
+    .mini-panel {
+      min-height: 102px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      padding: 12px;
+    }
+
+    .mini-panel b {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .curve {
+      height: 72px;
+      margin-top: 6px;
+      border-radius: 6px;
+      background:
+        linear-gradient(180deg, transparent 0 24%, rgba(20,100,255,0.10) 24% 26%, transparent 26% 49%, rgba(20,100,255,0.10) 49% 51%, transparent 51% 74%, rgba(20,100,255,0.10) 74% 76%, transparent 76%),
+        linear-gradient(120deg, transparent 0 20%, rgba(20,100,255,0.28) 20% 22%, transparent 22% 42%, rgba(21,154,92,0.35) 42% 44%, transparent 44% 67%, rgba(217,50,75,0.42) 67% 69%, transparent 69%);
+      border: 1px solid #d9e4ef;
+    }
+
+    .timeline {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .time-event {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .time-event:last-child {
+      border-bottom: 0;
+    }
+
+    .time-event time {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .time-event strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .time-event span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .ai-panel {
+      display: grid;
+      gap: 12px;
+    }
+
+    .ai-result {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+      padding: 14px;
+    }
+
+    .ai-result h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+
+    .ai-kv {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 8px;
+      font-size: 13px;
+      line-height: 1.42;
+      margin-top: 8px;
+    }
+
+    .ai-kv span:nth-child(odd) {
+      color: var(--muted);
+    }
+
+    .evidence-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .action-grid .btn {
+      min-height: 40px;
+      justify-content: center;
+      padding: 0 10px;
+    }
+
+    .material-preview {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .material-preview h4 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .material-preview p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .table th {
+      color: var(--muted);
+      background: var(--surface-2);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .table tr:hover td {
+      background: #fafcff;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .bar-chart {
+      display: grid;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .bar {
+      display: grid;
+      grid-template-columns: 90px 1fr 42px;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #e9eef5;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--blue), var(--cyan));
+    }
+
+    .rank-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .rank-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--surface-2);
+    }
+
+    .rank-item strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .rank-item span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .list-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .phone-shell {
+      width: 380px;
+      height: 760px;
+      border-radius: 32px;
+      background: #111923;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin: 0 auto;
+    }
+
+    .phone-screen {
+      height: 100%;
+      border-radius: 24px;
+      background: #f5f7fb;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 78px 1fr;
+    }
+
+    .phone-top {
+      background: linear-gradient(135deg, var(--blue), #0a9fbd);
+      color: #fff;
+      padding: 18px;
+    }
+
+    .phone-top b {
+      display: block;
+      font-size: 18px;
+    }
+
+    .phone-top span {
+      display: block;
+      margin-top: 6px;
+      font-size: 12px;
+      opacity: 0.82;
+    }
+
+    .phone-body {
+      padding: 14px;
+      overflow: auto;
+    }
+
+    .mobile-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .mobile-card {
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      border: 1px solid var(--line);
+    }
+
+    .mobile-card span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mobile-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+    }
+
+    .mobile-alarm {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .mobile-alarm strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .mobile-alarm span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(10, 18, 30, 0.44);
+      display: none;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .modal-backdrop.show {
+      display: grid;
+    }
+
+    .modal {
+      width: min(720px, 100%);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 26px 80px rgba(10, 18, 30, 0.28);
+      overflow: hidden;
+    }
+
+    .modal-head,
+    .modal-foot {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .modal-foot {
+      border-bottom: 0;
+      border-top: 1px solid var(--line);
+      justify-content: flex-end;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .modal-body {
+      padding: 18px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      min-height: 38px;
+      padding: 9px 10px;
+    }
+
+    .field textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 90;
+      display: grid;
+      gap: 10px;
+    }
+
+    .toast-item {
+      width: 360px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--blue);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      padding: 13px 14px;
+      animation: slideIn 0.22s ease both;
+    }
+
+    .toast-item strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .toast-item span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .num {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.42; }
+    }
+
+    @keyframes data-flash {
+      0% { opacity: 0.45; }
+      100% { opacity: 1; }
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: #f0f2f5;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: auto;
+      padding: 0;
+      gap: 0;
+      background: transparent;
+      color: #dbe7ff;
+      box-shadow: 0 12px 34px rgba(4, 10, 22, 0.18);
+    }
+
+    .brand {
+      height: 56px;
+      padding: 0 32px;
+      border-bottom: 0;
+      background: linear-gradient(90deg, #0a1628, #162848);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #3a6df0, #7aa8ff);
+      font-size: 15px;
+      border-radius: 8px;
+    }
+
+    .brand strong {
+      color: #fff;
+      font-size: 16px;
+      letter-spacing: 1px;
+      white-space: nowrap;
+    }
+
+    .brand span {
+      color: rgba(255, 255, 255, 0.46);
+      font-size: 11px;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 32px;
+      gap: 4px;
+      background: #0f1628;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      overflow-x: auto;
+    }
+
+    .nav button {
+      width: auto;
+      position: relative;
+      border-radius: 6px;
+      color: rgba(255, 255, 255, 0.56);
+      padding: 7px 12px;
+      gap: 6px;
+      white-space: nowrap;
+      font-size: 12.5px;
+    }
+
+    .nav button:nth-child(2),
+    .nav button:nth-child(5),
+    .nav button:nth-child(8) {
+      margin-left: 10px;
+      box-shadow: -11px 0 0 -10px rgba(255, 255, 255, 0.12);
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: rgba(58, 109, 240, 0.15);
+      color: #7aa8ff;
+    }
+
+    .nav button.active::after {
+      content: "";
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: -9px;
+      height: 2px;
+      border-radius: 2px;
+      background: #5a8cff;
+    }
+
+    .nav svg {
+      width: 15px;
+      height: 15px;
+      color: currentColor;
+    }
+
+    .sidebar-card {
+      position: absolute;
+      top: 12px;
+      right: 32px;
+      margin: 0;
+      width: auto;
+      max-width: 470px;
+      padding: 6px 14px;
+      border-radius: 6px;
+      background: rgba(42, 189, 126, 0.12);
+      border-color: rgba(42, 189, 126, 0.25);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-card b {
+      color: #2bbd7e;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .sidebar-card b::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: #2bbd7e;
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+
+    .sidebar-card span {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.68);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .main {
+      display: block;
+      min-width: 0;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 100px;
+      height: 44px;
+      padding: 0 32px;
+      background: #f0f2f5;
+      border-bottom: 1px solid #e1e4ec;
+      backdrop-filter: none;
+    }
+
+    .crumb {
+      font-size: 12px;
+    }
+
+    .crumb strong {
+      font-size: 15px;
+    }
+
+    .search {
+      height: 32px;
+      border-radius: 6px;
+      background: #fff;
+      border-color: #e1e4ec;
+      font-size: 12.5px;
+    }
+
+    .btn {
+      border-radius: 6px;
+      min-height: 32px;
+      padding: 0 12px;
+      font-size: 12.5px;
+    }
+
+    .view {
+      padding: 18px 28px 32px;
+      min-height: calc(100vh - 144px);
+      background: #f0f2f5;
+    }
+
+    #view-workbench.active {
+      background: #0b1222;
+    }
+
+    #view-workbench .page-head h1 {
+      color: #fff;
+      font-size: 24px;
+    }
+
+    #view-workbench .page-head p {
+      color: rgba(255, 255, 255, 0.46);
+      max-width: 920px;
+    }
+
+    .ops-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .ops-strip-left,
+    .ops-strip-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .live-pill,
+    .ops-chip,
+    .period-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      border-radius: 7px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      white-space: nowrap;
+    }
+
+    .live-pill {
+      color: #2bbd7e;
+      background: rgba(42, 189, 126, 0.10);
+      border: 1px solid rgba(42, 189, 126, 0.20);
+      font-weight: 650;
+    }
+
+    .live-pill i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2bbd7e;
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+
+    .ops-chip {
+      color: rgba(255, 255, 255, 0.62);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .ops-chip strong {
+      color: #7aa8ff;
+      font-weight: 700;
+    }
+
+    .period-btn {
+      color: rgba(255, 255, 255, 0.52);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .period-btn.active {
+      color: #7aa8ff;
+      background: rgba(58, 109, 240, 0.20);
+      border-color: rgba(58, 109, 240, 0.30);
+    }
+
+    .stat {
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .stat-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .stat-top i {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      font-style: normal;
+      font-size: 13px;
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .stat.red .stat-top i {
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .stat.amber .stat-top i {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .stat.green .stat-top i {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .stat.violet .stat-top i {
+      background: var(--violet-soft);
+      color: var(--violet);
+    }
+
+    .stat strong {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #view-workbench .stats {
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    #view-workbench .stat,
+    #view-workbench .card {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.06);
+      box-shadow: none;
+      color: #fff;
+    }
+
+    #view-workbench .stat span,
+    #view-workbench .alarm-meta,
+    #view-workbench .time-event time,
+    #view-workbench .time-event span,
+    #view-workbench .mini-panel b,
+    #view-workbench .info span,
+    #view-workbench .material-preview p,
+    #view-workbench .ai-kv span:nth-child(odd),
+    #view-workbench .evidence-list {
+      color: rgba(255, 255, 255, 0.48);
+    }
+
+    #view-workbench .stat strong,
+    #view-workbench .alarm-top strong,
+    #view-workbench .info strong,
+    #view-workbench .time-event strong,
+    #view-workbench .ai-result h3,
+    #view-workbench .material-preview h4,
+    #view-workbench .card-head h2,
+    #view-workbench .card-head h3 {
+      color: #fff;
+    }
+
+    #view-workbench .stat em {
+      color: rgba(255, 255, 255, 0.34);
+    }
+
+    #view-workbench .card-head,
+    #view-workbench .filters,
+    #view-workbench .time-event {
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+
+    #view-workbench .alarm-item {
+      color: #fff;
+    }
+
+    #view-workbench .alarm-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    #view-workbench .alarm-item.active {
+      background: rgba(58, 109, 240, 0.18);
+      border-color: rgba(90, 140, 255, 0.36);
+    }
+
+    #view-workbench .chip {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.58);
+    }
+
+    #view-workbench .chip.active {
+      background: rgba(58, 109, 240, 0.22);
+      color: #7aa8ff;
+      border-color: rgba(90, 140, 255, 0.38);
+    }
+
+    #view-workbench .info,
+    #view-workbench .mini-panel,
+    #view-workbench .ai-result,
+    #view-workbench .material-preview {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+
+    #view-workbench .curve {
+      border-color: rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(180deg, transparent 0 24%, rgba(90,140,255,0.12) 24% 26%, transparent 26% 49%, rgba(90,140,255,0.12) 49% 51%, transparent 51% 74%, rgba(90,140,255,0.12) 74% 76%, transparent 76%),
+        linear-gradient(120deg, transparent 0 20%, rgba(90,140,255,0.40) 20% 22%, transparent 22% 42%, rgba(42,189,126,0.42) 42% 44%, transparent 44% 67%, rgba(227,77,77,0.50) 67% 69%, transparent 69%);
+    }
+
+    #view-workbench .seg {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    #view-workbench .seg button {
+      color: rgba(255, 255, 255, 0.56);
+    }
+
+    #view-workbench .seg button.active {
+      color: #7aa8ff;
+      background: rgba(58, 109, 240, 0.18);
+      box-shadow: none;
+    }
+
+    #view-workbench .btn {
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.86);
+      border-color: rgba(255, 255, 255, 0.10);
+      box-shadow: none;
+    }
+
+    #view-workbench .btn.primary {
+      background: #3a6df0;
+      border-color: #3a6df0;
+      color: #fff;
+    }
+
+    #view-workbench .btn.warn {
+      background: #f0a325;
+      border-color: #f0a325;
+      color: #1b2230;
+    }
+
+    #view-workbench .btn.success {
+      background: #2bbd7e;
+      border-color: #2bbd7e;
+      color: #0b1222;
+    }
+
+    #view-workbench .btn.danger {
+      background: #e34d4d;
+      border-color: #e34d4d;
+      color: #fff;
+    }
+
+    @media (max-width: 1280px) {
+      .workbench {
+        grid-template-columns: 300px minmax(420px, 1fr);
+      }
+
+      .workbench > .card:last-child {
+        grid-column: 1 / -1;
+      }
+
+      .stats {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .sidebar-card {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">AI</div>
+        <div>
+          <strong>三客一危省平台 AI 报警处置助手</strong>
+          <span>浏览器插件 · 第一处置闭环</span>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-card">
+        <b>系统在线</b>
+        <span>省平台弹窗监听、DOM/VLM/LLM、语音对讲、短信事件接收均处于演示状态</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="crumb">
+          <strong id="pageTitle">处置驾驶舱</strong>
+          <span>/</span>
+          <span id="pageHint">报警弹窗监听、语音对讲、纠正观察、值班短信、记录台账</span>
+        </div>
+        <div class="top-actions">
+          <input class="search" id="globalSearch" placeholder="搜索车牌、企业、驾驶员">
+          <select class="search" id="roleSelect" style="width:132px">
+            <option>监控员</option>
+            <option>值班主管</option>
+            <option>管理层</option>
+          </select>
+          <button class="btn" id="openMobileBtn" title="事件详情页模拟器"></button>
+          <button class="btn primary" id="simulateBtn"></button>
+        </div>
+      </header>
+
+      <section class="view active" id="view-workbench">
+        <div class="ops-strip">
+          <div class="ops-strip-left">
+            <span class="live-pill"><i></i>实时处置</span>
+            <span class="ops-chip">刷新周期 <strong class="num">30s</strong></span>
+            <span class="ops-chip">省平台在线 <strong>正常</strong></span>
+            <span class="ops-chip">语音通道 <strong>可用</strong></span>
+            <span class="ops-chip">VLM 辅判 <strong>运行中</strong></span>
+          </div>
+          <div class="ops-strip-right">
+            <span class="period-btn active">今日</span>
+            <span class="period-btn">本周</span>
+            <span class="period-btn">本月</span>
+            <span class="period-btn active">导出处置日报</span>
+          </div>
+        </div>
+        <div class="page-head">
+          <div>
+            <h1>报警第一处置驾驶舱</h1>
+            <p>围绕最新建设方案：监听省平台报警弹窗，DOM+VLM+LLM 读取报警和视频证据，使用固定话术和本地语音模型对讲干预司机；未纠正、无法判断或高风险时短信通知值班业务人员，并在事件详情页辅助人工联系企业负责人。</p>
+          </div>
+          <div class="seg" id="queueSegment"></div>
+        </div>
+
+        <div class="stats" id="workbenchStats"></div>
+
+        <div class="workbench">
+          <section class="card">
+            <div class="card-head">
+              <h2>实时报警队列</h2>
+              <span class="badge red" id="unclosedBadge">未闭环 0</span>
+            </div>
+            <div class="filters" id="filters"></div>
+            <div class="alarm-list" id="alarmList"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 id="detailTitle">报警详情与证据</h2>
+              <div class="badges" id="detailBadges"></div>
+            </div>
+            <div class="card-body">
+              <div class="detail-grid" id="detailGrid"></div>
+              <div class="evidence-grid">
+                <div class="video-panel">
+                  <div class="video-hud">
+                    <span class="hud-tag"><i class="hud-dot"></i><span id="hudStatus">报警视频帧</span></span>
+                    <span class="hud-tag" id="hudTime">--:--:--</span>
+                  </div>
+                </div>
+                <div class="evidence-side">
+                  <div class="mini-panel">
+                    <b>速度曲线</b>
+                    <div class="curve"></div>
+                  </div>
+                  <div class="mini-panel">
+                    <b>证据摘要</b>
+                    <div class="badges" id="evidenceTags"></div>
+                  </div>
+                  <div class="mini-panel">
+                    <b>省平台状态</b>
+                    <p id="platformStatus" style="margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.4"></p>
+                  </div>
+                </div>
+              </div>
+              <div class="card" style="margin-top:14px;box-shadow:none">
+                <div class="card-head">
+                  <h3>处置时间线</h3>
+                  <button class="btn icon" id="addNoteBtn" title="添加人工备注"></button>
+                </div>
+                <div class="card-body">
+                  <div class="timeline" id="timeline"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>插件识别与干预</h2>
+              <span class="badge blue" id="aiStateBadge">待分析</span>
+            </div>
+            <div class="card-body ai-panel">
+              <div class="ai-result" id="aiResult"></div>
+              <div class="action-grid">
+                <button class="btn primary" id="popupBtn">监听报警弹窗</button>
+                <button class="btn primary" id="analyzeBtn">DOM+VLM+LLM识别</button>
+                <button class="btn" id="textBtn">文本下发</button>
+                <button class="btn" id="voiceBtn">本地语音对讲</button>
+                <button class="btn" id="replyBtn">识别司机回复</button>
+                <button class="btn warn" id="observeBtn">观察是否纠正</button>
+                <button class="btn warn" id="callBtn">短信通知值班人员</button>
+                <button class="btn" id="materialBtn">生成报警记录</button>
+                <button class="btn success" id="submitBtn">归档记录</button>
+                <button class="btn" id="takeoverBtn">我来接手</button>
+                <button class="btn danger" id="closeBtn">确认闭环</button>
+              </div>
+              <div class="material-preview" id="materialPreview"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-dashboard"></section>
+      <section class="view" id="view-mvp"></section>
+      <section class="view" id="view-acceptance"></section>
+      <section class="view" id="view-applications"></section>
+      <section class="view" id="view-calls"></section>
+      <section class="view" id="view-reports"></section>
+      <section class="view" id="view-rules"></section>
+      <section class="view" id="view-mobile"></section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">人工备注</h3>
+        <button class="btn icon" id="modalClose" title="关闭"></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const icons = {
+      dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="8" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="15" width="7" height="6" rx="1"></rect></svg>',
+      workbench: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path><path d="M8 5v14"></path></svg>',
+      file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>',
+      phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.86 19.86 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.32 1.77.59 2.61a2 2 0 0 1-.45 2.11L8 9.7a16 16 0 0 0 6.3 6.3l1.26-1.25a2 2 0 0 1 2.11-.45c.84.27 1.71.47 2.61.59A2 2 0 0 1 22 16.92z"></path></svg>',
+      report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-4"></path></svg>',
+      rules: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path><path d="M9 12l2 2 4-5"></path></svg>',
+      mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>',
+      plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+      bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6L6 18"></path><path d="M6 6l12 12"></path></svg>',
+      note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>'
+    };
+
+    const navItems = [
+      ["workbench", "处置驾驶舱", icons.dashboard, "弹窗监听、司机对讲、纠正观察、值班短信"],
+      ["mvp", "风控边界", icons.rules, "浏览器插件边界、外部依赖、审计日志"],
+      ["acceptance", "验收口径", icons.report, "主链路、失败链路、权限与状态验收"],
+      ["dashboard", "管理看板", icons.dashboard, "今日报警、未纠正、记录归档、排名风险"],
+      ["applications", "记录台账", icons.file, "报警记录、证据、通知结果"],
+      ["calls", "事件通知", icons.phone, "值班短信、详情页、企业话术"],
+      ["reports", "数据报表", icons.report, "处置日报、记录导出、风险清单"],
+      ["rules", "规则SOP", icons.rules, "弹窗识别、干预话术、升级规则"],
+      ["mobile", "移动接收", icons.mobile, "短信接收、事件详情、备注"]
+    ];
+
+    const transitions = {
+      handleStatus: {
+        "待人工确认": ["AI识别完成", "处理中", "未闭环", "已处理"],
+        "AI识别完成": ["待人工确认", "处理中", "未闭环", "已归档", "已处理"],
+        "处理中": ["待人工确认", "未闭环", "已归档", "已处理"],
+        "未闭环": ["待人工确认", "处理中", "已处理"],
+        "已归档": ["待人工确认", "已处理"],
+        "已处理": []
+      },
+      applicationStatus: {
+        "未生成": ["待生成记录", "记录草稿", "需补证", "待归档确认"],
+        "待生成记录": ["记录草稿", "待归档确认", "需补证", "废弃记录"],
+        "记录草稿": ["待归档确认", "已归档", "需补证", "废弃记录"],
+        "待归档确认": ["已归档", "需补证", "废弃记录"],
+        "需补证": ["记录草稿", "待归档确认", "已归档", "废弃记录"],
+        "已归档": [],
+        "废弃记录": []
+      },
+      callStatus: {
+        "未触发": ["短信发送中"],
+        "短信发送中": ["待升级", "已通知", "发送失败"],
+        "待升级": ["短信发送中", "已通知", "发送失败"],
+        "发送失败": ["短信发送中", "待升级"],
+        "已通知": []
+      }
+    };
+
+    const state = {
+      activeView: "workbench",
+      activeAlarmId: "AL202606110001",
+      filter: "全部",
+      currentRole: "监控员",
+      roles: {
+        "监控员": ["detectPopup", "analyze", "sendText", "sendVoice", "recognizeReply", "observeCorrection", "makeMaterial", "call", "takeover", "addNote"],
+        "值班主管": ["detectPopup", "analyze", "sendText", "sendVoice", "recognizeReply", "observeCorrection", "makeMaterial", "submitApplication", "call", "takeover", "closeHighRisk", "export", "addNote"],
+        "管理层": ["viewDashboard", "export"]
+      },
+      integration: {
+        alarmCapture: true,
+        domAccess: true,
+        vlmService: true,
+        llmService: true,
+        videoEvidence: true,
+        textDelivery: true,
+        voiceChannel: true,
+        localVoiceModel: true,
+        driverAsr: true,
+        phoneGateway: true,
+        messageGateway: true
+      },
+      audit: [
+        ["系统启动", "加载本地原型数据", "成功"],
+        ["范围控制", "第一阶段仅验证插件读取、司机干预、未纠正升级、记录归档", "已收敛"]
+      ],
+      acceptanceResults: [],
+      alarms: [
+        {
+          id: "AL202606110001",
+          alarmType: "抽烟报警",
+          vehicleNo: "演示车辆-01",
+          company: "示例运输企业 A",
+          driver: "张某",
+          alarmTime: "2026-06-18 14:27:06",
+          receiveTime: "2026-06-18 14:27:09",
+          location: "示例高速路段 A",
+          speed: 50,
+          status: "待人工确认",
+          riskLevel: "中",
+          handleStatus: "待人工确认",
+          ai: null,
+          applicationStatus: "未生成",
+          callStatus: "未触发",
+          materialVersions: [],
+          submittedMaterialVersion: null,
+          plugin: {
+            popup: "已捕获",
+            dom: "待读取",
+            vlm: "待分析",
+            llm: "待生成话术",
+            voice: "未对讲",
+            driverReply: "未识别",
+            correction: "未观察",
+            observationWindow: "60秒",
+            enterpriseNotify: "未通知",
+            record: "未生成"
+          },
+          takenBy: "",
+          platformStatus: "省平台视频可查看，文本下发入口正常，语音对讲入口正常。",
+          evidence: ["报警截图", "视频帧", "速度曲线", "处置记录"],
+          timeline: [
+            ["14:27:09", "省平台生成报警", "系统监听到抽烟报警并读取报警详情。"],
+            ["14:27:12", "证据自动抓取", "已保存报警截图、视频帧和速度曲线。"]
+          ]
+        },
+        {
+          id: "AL202606110002",
+          alarmType: "生理疲劳",
+          vehicleNo: "演示车辆-02",
+          company: "示例客运企业 B",
+          driver: "李某",
+          alarmTime: "2026-06-18 02:17:43",
+          receiveTime: "2026-06-18 02:17:46",
+          location: "示例国道路段 B",
+          speed: 76,
+          status: "高风险",
+          riskLevel: "高",
+          handleStatus: "未闭环",
+          ai: {
+            truthResult: "疑似正报",
+            confidence: "高",
+            applyRecommendation: "待生成记录",
+            applyType: "不适用",
+            applyValue: "低",
+            rejectRisk: "高",
+            reasonSummary: "夜间驾驶员出现连续低头和闭眼趋势，报警证据较充分，建议立即语音提醒；未纠正时短信通知值班业务人员接收。",
+            evidencePoints: ["夜间高风险时段", "连续 3 帧疑似闭眼", "报警持续超过 90 秒"],
+            nextAction: "短信通知值班业务人员"
+          },
+          applicationStatus: "待生成记录",
+          callStatus: "待升级",
+          materialVersions: [],
+          submittedMaterialVersion: null,
+          plugin: {
+            popup: "已捕获",
+            dom: "已读取",
+            vlm: "已分析",
+            llm: "已生成话术",
+            voice: "已对讲",
+            driverReply: "未明确回应",
+            correction: "未纠正",
+            observationWindow: "60秒",
+            enterpriseNotify: "待升级",
+            record: "未生成"
+          },
+          takenBy: "",
+          platformStatus: "省平台视频可查看，驾驶员语音提醒后未明确回应。",
+          evidence: ["报警截图", "视频帧", "速度曲线", "语音记录"],
+          timeline: [
+            ["02:17:46", "省平台生成报警", "系统读取生理疲劳报警。"],
+            ["02:18:02", "语音提醒", "已播放疲劳驾驶标准话术。"],
+            ["02:19:10", "未纠正", "报警持续存在，进入值班业务人员短信接收待升级。"]
+          ]
+        },
+        {
+          id: "AL202606110003",
+          alarmType: "超速驾驶",
+          vehicleNo: "演示车辆-03",
+          company: "示例危货运输企业 C",
+          driver: "王某",
+          alarmTime: "2026-06-18 10:08:21",
+          receiveTime: "2026-06-18 10:08:25",
+          location: "示例城区道路 C",
+          speed: 93,
+          status: "待生成记录",
+          riskLevel: "中",
+          handleStatus: "AI识别完成",
+          ai: {
+            truthResult: "证据不足",
+            confidence: "中",
+            applyRecommendation: "需补证",
+            applyType: "异常数据复核",
+            applyValue: "中",
+            rejectRisk: "中",
+            reasonSummary: "速度曲线存在瞬时跳变，建议补充轨迹和路段限速依据后再提交异常数据复核。",
+            evidencePoints: ["速度峰值持续时间短", "前后速度差异异常", "需补充路段限速依据"],
+            nextAction: "标记需补证"
+          },
+          applicationStatus: "需补证",
+          callStatus: "未触发",
+          materialVersions: [
+            {
+              version: 1,
+              author: "王主管",
+              time: "2026-06-18 10:10:24",
+              reason: "速度曲线存在瞬时跳变，需补充路段限速依据。",
+              evidence: ["速度曲线", "轨迹点", "报警详情"]
+            }
+          ],
+          submittedMaterialVersion: null,
+          plugin: {
+            popup: "列表采集",
+            dom: "已读取",
+            vlm: "不适用",
+            llm: "已生成说明",
+            voice: "未对讲",
+            driverReply: "不适用",
+            correction: "需补证",
+            observationWindow: "不适用",
+            enterpriseNotify: "未通知",
+            record: "已生成草稿"
+          },
+          takenBy: "王主管",
+          platformStatus: "省平台速度曲线可导出，轨迹详情需人工补充。",
+          evidence: ["速度曲线", "轨迹点", "报警详情"],
+          timeline: [
+            ["10:08:25", "超速报警", "系统完成报警详情读取。"],
+            ["10:09:01", "AI 复核", "识别到速度曲线存在瞬时跳变。"],
+            ["10:10:24", "主管接手", "王主管标记需补充路段限速依据。"]
+          ]
+        }
+      ],
+      applications: [],
+      calls: []
+    };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function currentAlarm() {
+      return state.alarms.find(a => a.id === state.activeAlarmId) || state.alarms[0];
+    }
+
+    function setIconButtons() {
+      $("openMobileBtn").innerHTML = icons.mobile + "事件详情";
+      $("simulateBtn").innerHTML = icons.plus + "模拟新报警";
+      $("addNoteBtn").innerHTML = icons.note;
+      $("modalClose").innerHTML = icons.x;
+    }
+
+    function renderNav() {
+      $("nav").innerHTML = navItems.map(([id, label, icon]) => `
+        <button class="${state.activeView === id ? "active" : ""}" data-view="${id}">${icon}<span>${label}</span></button>
+      `).join("");
+      document.querySelectorAll("[data-view]").forEach(btn => {
+        btn.addEventListener("click", () => switchView(btn.dataset.view));
+      });
+    }
+
+    function switchView(view) {
+      state.activeView = view;
+      document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === `view-${view}`));
+      const item = navItems.find(i => i[0] === view);
+      $("pageTitle").textContent = item[1];
+      $("pageHint").textContent = item[3];
+      renderNav();
+      renderAll();
+    }
+
+    function severityClass(value) {
+      if (["高", "高风险", "未闭环", "废弃记录", "发送失败"].includes(value)) return "red";
+      if (["中", "待人工确认", "待升级", "需补证", "待生成记录", "记录草稿", "待归档确认", "短信发送中"].includes(value)) return "amber";
+      if (["低", "已处理", "已通知", "已归档"].includes(value)) return "green";
+      return "blue";
+    }
+
+    function renderStats(targetId = "workbenchStats") {
+      const total = state.alarms.length;
+      const handled = state.alarms.filter(a => a.handleStatus === "已处理").length;
+      const unhandled = state.alarms.filter(a => a.handleStatus !== "已处理").length;
+      const records = state.alarms.filter(a => a.plugin?.record && a.plugin.record !== "未生成").length;
+      const high = state.alarms.filter(a => a.riskLevel === "高").length;
+      const calls = state.alarms.filter(a => a.plugin?.enterpriseNotify && a.plugin.enterpriseNotify !== "未通知").length;
+      const notCorrected = state.alarms.filter(a => a.plugin?.correction === "未纠正").length;
+      const data = [
+        ["今日报警", total, "实时", "●", "blue"],
+        ["未纠正", notCorrected, "需接收", "!", "red"],
+        ["未闭环", unhandled, "待跟进", "↻", "amber"],
+        ["已生成记录", records, "可归档", "✓", "green"],
+        ["高风险", high, "人工确认", "▲", "red"],
+        ["事件通知", calls, "短信/详情", "✉", "violet"]
+      ];
+      const el = $(targetId);
+      if (!el) return;
+      el.innerHTML = data.map(([label, value, note, icon, tone]) => `
+        <div class="stat ${tone}">
+          <div class="stat-top"><span>${label}</span><i>${icon}</i></div>
+          <strong>${value}<em>${note}</em></strong>
+        </div>
+      `).join("");
+    }
+
+    function renderFilters() {
+      const filters = ["全部", "新报警", "待处理", "AI识别中", "待生成记录", "待人工确认", "已归档", "需补证", "事件通知中", "未闭环", "高风险"];
+      $("filters").innerHTML = filters.map(f => `<button class="chip ${state.filter === f ? "active" : ""}" data-filter="${f}">${f}</button>`).join("");
+      document.querySelectorAll("[data-filter]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.filter = btn.dataset.filter;
+          renderWorkbench();
+        });
+      });
+      $("queueSegment").innerHTML = ["全部", "高风险", "未纠正", "未闭环"].map(f => `<button class="${state.filter === f ? "active" : ""}" data-quick="${f}">${f}</button>`).join("");
+      document.querySelectorAll("[data-quick]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.filter = btn.dataset.quick;
+          renderWorkbench();
+        });
+      });
+    }
+
+    function filteredAlarms() {
+      if (state.filter === "全部") return state.alarms;
+      if (state.filter === "高风险") return state.alarms.filter(a => a.riskLevel === "高");
+      if (state.filter === "待生成记录") return state.alarms.filter(a => a.applicationStatus === "待生成记录" || a.plugin?.record === "未生成");
+      if (state.filter === "未闭环") return state.alarms.filter(a => a.handleStatus === "未闭环" || a.handleStatus !== "已处理");
+      if (state.filter === "未纠正") return state.alarms.filter(a => a.plugin?.correction === "未纠正");
+      if (state.filter === "需补证") return state.alarms.filter(a => a.applicationStatus === "需补证");
+      if (state.filter === "事件通知中") return state.alarms.filter(a => a.callStatus !== "未触发" && a.callStatus !== "已通知");
+      if (state.filter === "待人工确认") return state.alarms.filter(a => a.handleStatus === "待人工确认");
+      if (state.filter === "已归档") return state.alarms.filter(a => a.applicationStatus === "已归档");
+      return state.alarms;
+    }
+
+    function renderAlarmList() {
+      const q = $("globalSearch").value.trim();
+      const list = filteredAlarms().filter(a => !q || [a.vehicleNo, a.company, a.driver, a.alarmType].join("").includes(q));
+      $("alarmList").innerHTML = list.map(a => `
+        <button class="alarm-item ${a.id === state.activeAlarmId ? "active" : ""}" data-alarm="${a.id}">
+          <div class="alarm-top">
+            <strong>${a.alarmType}</strong>
+            <span class="badge ${severityClass(a.riskLevel)}">${a.riskLevel}风险</span>
+          </div>
+          <div class="alarm-meta">
+            <span>${a.vehicleNo} · ${a.driver}</span>
+            <span>${a.company}</span>
+            <span>${a.alarmTime}</span>
+          </div>
+          <div class="badges">
+            <span class="badge ${severityClass(a.handleStatus)}">${a.handleStatus}</span>
+            <span class="badge ${severityClass(a.applicationStatus)}">${a.applicationStatus}</span>
+            <span class="badge ${severityClass(a.callStatus)}">${a.callStatus}</span>
+          </div>
+        </button>
+      `).join("");
+      document.querySelectorAll("[data-alarm]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.activeAlarmId = btn.dataset.alarm;
+          renderWorkbench();
+        });
+      });
+    }
+
+    function renderDetail() {
+      const a = currentAlarm();
+      $("detailTitle").textContent = `${a.alarmType} · ${a.vehicleNo}`;
+      $("detailBadges").innerHTML = `
+        <span class="badge ${severityClass(a.riskLevel)}">${a.riskLevel}风险</span>
+        <span class="badge ${severityClass(a.handleStatus)}">${a.handleStatus}</span>
+        <span class="badge ${severityClass(a.applicationStatus)}">${a.applicationStatus}</span>
+      `;
+      $("detailGrid").innerHTML = [
+        ["报警ID", a.id],
+        ["所属企业", a.company],
+        ["驾驶员", a.driver],
+        ["报警速度", `${a.speed} km/h`],
+        ["报警时间", a.alarmTime],
+        ["接收时间", a.receiveTime],
+        ["报警地点", a.location],
+        ["接手人员", a.takenBy || "未接手"]
+      ].map(([k, v]) => `<div class="info"><span>${k}</span><strong>${v}</strong></div>`).join("");
+      $("hudStatus").textContent = `${a.alarmType} 视频帧`;
+      $("hudTime").textContent = a.alarmTime.split(" ")[1];
+      $("evidenceTags").innerHTML = a.evidence.map(e => `<span class="badge blue">${e}</span>`).join("");
+      $("platformStatus").textContent = a.platformStatus;
+      $("timeline").innerHTML = a.timeline.map(([time, title, text]) => `
+        <div class="time-event"><time>${time}</time><div><strong>${title}</strong><span>${text}</span></div></div>
+      `).join("");
+    }
+
+    function renderAiPanel() {
+      const a = currentAlarm();
+      const ai = a.ai;
+      const material = latestMaterial(a);
+      $("aiStateBadge").textContent = a.plugin?.correction === "已纠正" ? "司机已纠正" : a.plugin?.correction === "未纠正" ? "需值班接收" : ai ? "已识别" : "待识别";
+      $("aiStateBadge").className = `badge ${ai ? "green" : "blue"}`;
+      $("aiResult").innerHTML = `
+        <h3>浏览器插件流水线</h3>
+        <div class="ai-kv">
+          <span>报警弹窗</span><strong>${a.plugin?.popup || "未捕获"}</strong>
+          <span>DOM读取</span><strong>${a.plugin?.dom || "待读取"}</strong>
+          <span>VLM识别</span><strong>${a.plugin?.vlm || "待分析"}</strong>
+          <span>LLM话术</span><strong>${a.plugin?.llm || "待生成"}</strong>
+          <span>本地语音</span><strong>${a.plugin?.voice || "未对讲"}</strong>
+          <span>司机回复</span><strong>${a.plugin?.driverReply || "未识别"}</strong>
+          <span>纠正观察</span><strong>${a.plugin?.correction || "未观察"} · ${a.plugin?.observationWindow || "60秒"}</strong>
+          <span>事件接收</span><strong>${a.plugin?.enterpriseNotify || "未通知"}</strong>
+        </div>
+        ${ai ? `<p style="margin:12px 0 0;color:var(--muted);font-size:13px;line-height:1.5">${ai.reasonSummary}</p><ul class="evidence-list">${ai.evidencePoints.map(p => `<li>${p}</li>`).join("")}</ul>` : `<p style="margin:12px 0 0;color:var(--muted);font-size:13px;line-height:1.5">当前报警尚未完成 DOM+VLM+LLM 识别。插件应先读取弹窗和平台 DOM，再结合视频帧判断司机状态并生成固定审核话术。</p>`}
+      `;
+      $("materialPreview").innerHTML = a.plugin?.record === "未生成" ? `
+        <h4>报警记录预览</h4>
+        <p>尚未生成报警记录。记录应包含弹窗字段、对讲话术、司机回复、纠正观察、值班短信、事件详情和处理时间线。</p>
+      ` : `
+        <h4>${a.plugin?.record || "报警记录"}${material ? ` · v${material.version}` : ""}</h4>
+        <p>记录内容：${a.vehicleNo} 发生 ${a.alarmType}，已通过平台文字/语音入口进行干预；司机状态：${a.plugin?.driverReply}；纠正结果：${a.plugin?.correction}；事件接收：${a.plugin?.enterpriseNotify}。</p>
+        ${material ? `<p style="margin-top:8px">记录人：${material.author} · 生成时间：${material.time}<br>归档版本：${a.submittedMaterialVersion ? `v${a.submittedMaterialVersion}` : "未归档"}<br>证据包：${material.evidence.join("、")}</p>` : `<p style="margin-top:8px">当前状态需要记录，但尚未生成版本。</p>`}
+      `;
+    }
+
+    function addTimeline(a, title, text) {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      a.timeline.push([time, title, text]);
+      writeAudit(title, `${a.id} · ${a.vehicleNo} · ${text}`, "已记录");
+    }
+
+    function writeAudit(action, detail, result) {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      state.audit.unshift([`${time} ${action}`, detail, result]);
+      state.audit = state.audit.slice(0, 30);
+    }
+
+    function transition(a, field, next, reason) {
+      const current = a[field];
+      if (current === next) return true;
+      const allowed = transitions[field] && transitions[field][current];
+      if (!allowed || !allowed.includes(next)) {
+        writeAudit("非法状态流转", `${a.id} · ${field}: ${current} -> ${next} · ${reason}`, "失败");
+        toast("非法状态流转", `${field} 不允许从「${current}」直接变为「${next}」。`);
+        return false;
+      }
+      a[field] = next;
+      writeAudit("状态流转", `${a.id} · ${field}: ${current} -> ${next} · ${reason}`, "成功");
+      return true;
+    }
+
+    function validateAlarm(a) {
+      const issues = [];
+      if ((a.applicationStatus === "已归档" || a.applicationStatus === "待归档确认") && !a.ai) {
+        issues.push("报警记录归档状态需要 DOM/VLM/LLM 识别结果，但当前缺失。");
+      }
+      if (a.applicationStatus === "已归档" && !a.evidence.includes("处置记录")) {
+        issues.push("已归档报警缺少处置记录证据。");
+      }
+      if (a.handleStatus === "已处理" && ["短信发送中", "待升级"].includes(a.callStatus)) {
+        issues.push("报警已处理，但值班事件接收仍处于未完成状态。");
+      }
+      if (a.riskLevel === "高" && a.handleStatus === "已处理" && !a.takenBy) {
+        issues.push("高风险报警闭环前缺少人工接手人。");
+      }
+      if (a.ai && a.ai.confidence === "低" && a.handleStatus === "已处理") {
+        issues.push("低置信度 AI 结果不应直接闭环。");
+      }
+      if (a.applicationStatus === "已归档" && !a.submittedMaterialVersion) {
+        issues.push("已归档报警没有绑定记录版本。");
+      }
+      if (a.submittedMaterialVersion && !a.materialVersions.some(m => m.version === a.submittedMaterialVersion)) {
+        issues.push("归档记录版本不存在或已丢失。");
+      }
+      return issues;
+    }
+
+    function validationSummary() {
+      return state.alarms.flatMap(a => validateAlarm(a).map(issue => ({ alarm: a, issue })));
+    }
+
+    function requireIntegration(key, label) {
+      if (state.integration[key]) return true;
+      const a = currentAlarm();
+      writeAudit("操作被阻断", `${label} 不可用，禁止继续自动化动作`, "失败");
+      toast("操作被阻断", `${label} 当前不可用，必须人工接管或先恢复外部依赖。`);
+      if (a) {
+        transition(a, "handleStatus", "待人工确认", `${label} 异常后回退人工确认`);
+        addTimeline(a, "外部依赖异常", `${label} 不可用，系统阻断自动处置并要求人工确认。`);
+      }
+      renderAll();
+      return false;
+    }
+
+    function requirePermission(permission, label) {
+      const granted = state.roles[state.currentRole] && state.roles[state.currentRole].includes(permission);
+      if (granted) return true;
+      writeAudit("权限拒绝", `${state.currentRole} 尝试执行：${label}`, "失败");
+      toast("权限不足", `${state.currentRole} 无权执行「${label}」。`);
+      return false;
+    }
+
+    function latestMaterial(a) {
+      return a.materialVersions && a.materialVersions.length ? a.materialVersions[a.materialVersions.length - 1] : null;
+    }
+
+    function createMaterialVersion(a, reason) {
+      const version = (a.materialVersions || []).length + 1;
+      const now = new Date();
+      const time = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      const material = {
+        version,
+        author: state.currentRole,
+        time,
+        reason,
+        evidence: [...a.evidence, "AI判断依据", "处置时间线"]
+      };
+      a.materialVersions.push(material);
+      writeAudit("记录版本生成", `${a.id} · v${version} · ${reason}`, "成功");
+      return material;
+    }
+
+    function toggleIntegration(key) {
+      state.integration[key] = !state.integration[key];
+      writeAudit("外部依赖切换", `${key} => ${state.integration[key] ? "正常" : "异常"}`, "已更新");
+      renderAll();
+    }
+
+    function detectPopup() {
+      if (!requirePermission("detectPopup", "监听报警弹窗")) return;
+      if (!requireIntegration("alarmCapture", "三客一危平台报警弹窗监听")) return;
+      const a = currentAlarm();
+      a.plugin.popup = "已捕获";
+      a.plugin.dom = "待读取";
+      addTimeline(a, "报警弹窗捕获", `插件捕获平台右下角报警提示：${a.vehicleNo} · ${a.alarmType}，等待点击查看报警。`);
+      toast("报警弹窗已捕获", "已记录车牌、报警类型、报警时间和查看报警入口。");
+      renderAll();
+    }
+
+    function analyzeAlarm() {
+      if (!requirePermission("analyze", "DOM+VLM+LLM 识别")) return false;
+      if (!requireIntegration("alarmCapture", "省平台报警读取")) return false;
+      if (!requireIntegration("domAccess", "平台 DOM 读取")) return false;
+      if (!requireIntegration("vlmService", "VLM 视频帧识别")) return false;
+      if (!requireIntegration("llmService", "LLM 话术与摘要生成")) return false;
+      if (!requireIntegration("videoEvidence", "视频与截图证据")) return false;
+      const a = currentAlarm();
+      if (!transition(a, "handleStatus", "AI识别完成", "完成 DOM/VLM/LLM 识别")) return false;
+      a.plugin.dom = "已读取";
+      a.plugin.vlm = "已分析";
+      a.plugin.llm = "已生成话术";
+      if (a.alarmType.includes("抽烟")) {
+        a.ai = {
+          truthResult: "需干预",
+          confidence: "中",
+          applyRecommendation: "待生成记录",
+          applyType: "司机干预",
+          applyValue: "中",
+          rejectRisk: "中",
+          reasonSummary: "插件已读取抽烟报警弹窗和视频帧，画面存在疑似违规动作，建议先通过平台语音对讲提醒司机，并观察 60 秒内是否纠正。",
+          evidencePoints: ["报警弹窗字段已读取", "驾驶员面部区域存在疑似抽烟动作", "需要对讲后复核是否纠正"],
+          nextAction: "语音对讲并观察纠正"
+        };
+        transition(a, "applicationStatus", "待生成记录", "识别完成，等待生成报警记录");
+      } else if (a.alarmType.includes("疲劳")) {
+        a.ai = {
+          truthResult: "高风险需升级",
+          confidence: "高",
+          applyRecommendation: "待生成记录",
+          applyType: "司机干预",
+          applyValue: "高",
+          rejectRisk: "高",
+          reasonSummary: "连续视频帧显示驾驶员疑似闭眼和低头，报警证据较充分，建议语音提醒；若未纠正则短信通知值班业务人员接收。",
+          evidencePoints: ["夜间高风险时段", "连续多帧疑似疲劳特征", "报警持续存在"],
+          nextAction: "语音对讲，未纠正则短信通知值班业务人员"
+        };
+        transition(a, "applicationStatus", "待生成记录", "识别完成，等待生成报警记录");
+      } else {
+        a.ai = {
+          truthResult: "证据不足",
+          confidence: "中",
+          applyRecommendation: "需补证",
+          applyType: "平台数据复核",
+          applyValue: "中",
+          rejectRisk: "中",
+          reasonSummary: "速度曲线存在瞬时跳变，需要补充轨迹、路段限速和平台原始记录。",
+          evidencePoints: ["速度峰值持续时间短", "前后速度差异异常", "需补充路段限速依据"],
+          nextAction: "标记需补证"
+        };
+        transition(a, "applicationStatus", "需补证", "AI 判断证据不足");
+      }
+      addTimeline(a, "DOM+VLM+LLM识别完成", `已读取平台 DOM、视频帧和车辆信息，生成固定干预话术；下一步：${a.ai.nextAction}。`);
+      toast("识别完成", `${a.vehicleNo} 已完成 DOM+VLM+LLM 识别。`);
+      renderAll();
+      return true;
+    }
+
+    function sendText() {
+      if (!requirePermission("sendText", "文本下发")) return;
+      if (!requireIntegration("textDelivery", "省平台文本下发入口")) return;
+      const a = currentAlarm();
+      const templates = {
+        "超速驾驶": "当前车辆存在超速风险，请立即降低车速，按限速要求安全行驶。",
+        "生理疲劳": "系统检测到疲劳驾驶风险，请保持清醒，必要时就近安全停车休息。",
+        "抽烟报警": "请立即停止抽烟，保持安全驾驶状态。"
+      };
+      addTimeline(a, "文本下发", templates[a.alarmType] || "请注意当前报警风险，按要求安全驾驶。");
+      a.plugin.voice = "文本已下发";
+      a.plugin.correction = "观察中";
+      if (a.handleStatus !== "未闭环" && !transition(a, "handleStatus", "处理中", "文本下发后进入处理中")) return;
+      toast("文本下发已记录", "已通过平台文字下发入口干预司机，进入纠正观察窗口。");
+      renderAll();
+    }
+
+    function sendVoice() {
+      if (!requirePermission("sendVoice", "语音提醒")) return;
+      if (!requireIntegration("voiceChannel", "省平台语音对讲通道")) return;
+      if (!requireIntegration("localVoiceModel", "本地语音模型播放")) return;
+      const a = currentAlarm();
+      a.plugin.voice = "已对讲";
+      a.plugin.driverReply = state.integration.driverAsr ? "待识别" : "未启用识别";
+      a.plugin.correction = "观察中";
+      addTimeline(a, "本地语音对讲", `通过平台语音对讲入口播放本地语音模型话术：${a.alarmType} 标准干预提醒。`);
+      if (!transition(a, "handleStatus", a.riskLevel === "高" ? "未闭环" : "处理中", "语音提醒后更新处置状态")) return;
+      toast("语音对讲已播放", "已进入司机回复识别和纠正观察窗口。");
+      renderAll();
+    }
+
+    function recognizeDriverReply() {
+      if (!requirePermission("recognizeReply", "识别司机回复")) return;
+      const a = currentAlarm();
+      if (!state.integration.driverAsr) {
+        a.plugin.driverReply = "未启用识别";
+        addTimeline(a, "司机回复识别跳过", "客户未启用司机语音回复识别，仅记录对讲动作和后续观察结果。");
+        toast("司机回复识别未启用", "可由客户确认是否作为第一阶段能力。");
+        renderAll();
+        return;
+      }
+      a.plugin.driverReply = a.riskLevel === "高" ? "未明确回应" : "已回应：收到";
+      addTimeline(a, "司机回复识别", `本地 ASR 识别结果：${a.plugin.driverReply}。`);
+      toast("司机回复已识别", a.plugin.driverReply);
+      renderAll();
+    }
+
+    function observeCorrection() {
+      if (!requirePermission("observeCorrection", "观察司机是否纠正")) return;
+      if (!requireIntegration("videoEvidence", "干预后视频观察")) return;
+      const a = currentAlarm();
+      if (a.plugin.voice !== "已对讲" && a.plugin.voice !== "文本已下发") {
+        toast("观察被阻断", "还没有完成文本或语音干预，不能判断是否纠正。");
+        writeAudit("观察被阻断", `${a.id} 尚未干预`, "失败");
+        return;
+      }
+      a.plugin.correction = a.riskLevel === "高" || a.driver.includes("陈") ? "未纠正" : "已纠正";
+      addTimeline(a, "纠正观察", `观察窗口 ${a.plugin.observationWindow}：${a.plugin.correction}。`);
+      if (a.plugin.correction === "未纠正") {
+        transition(a, "handleStatus", "未闭环", "司机未纠正，需短信通知值班业务人员");
+        toast("司机未纠正", "需要短信通知值班业务人员，并在事件详情页辅助人工联系企业负责人。");
+      } else {
+        transition(a, "handleStatus", "处理中", "司机已纠正，等待生成记录");
+        toast("司机已纠正", "可生成报警记录并归档。");
+      }
+      renderAll();
+    }
+
+    function makeMaterial() {
+      if (!requirePermission("makeMaterial", "生成报警记录")) return;
+      const a = currentAlarm();
+      if (!a.ai && !analyzeAlarm()) return;
+      if (!state.integration.videoEvidence) {
+        toast("记录生成被阻断", "缺少视频/截图证据，不能生成报警记录。");
+        writeAudit("记录生成被阻断", `${a.id} 缺少证据链`, "失败");
+        return;
+      }
+      if (!transition(a, "applicationStatus", "记录草稿", "生成报警记录")) return;
+      createMaterialVersion(a, `报警记录：${a.ai.reasonSummary}；司机回复：${a.plugin.driverReply}；纠正观察：${a.plugin.correction}；事件接收：${a.plugin.enterpriseNotify}`);
+      a.plugin.record = "已生成草稿";
+      addTimeline(a, "生成报警记录", "已生成报警弹窗、平台证据、对讲干预、司机回复、纠正观察、值班短信和处理时间线记录。");
+      toast("报警记录已生成", "记录进入记录中心，等待归档。");
+      renderAll();
+    }
+
+    function submitApplication() {
+      if (!requirePermission("submitApplication", "归档报警记录")) return;
+      const a = currentAlarm();
+      if (!a.ai && !analyzeAlarm()) return;
+      if (!["记录草稿", "待归档确认"].includes(a.applicationStatus)) {
+        toast("禁止归档", "当前状态不允许归档，需先生成报警记录并人工确认。");
+        writeAudit("归档被阻断", `${a.id} 当前记录状态为 ${a.applicationStatus}`, "失败");
+        return;
+      }
+      const material = latestMaterial(a);
+      if (!material) {
+        toast("禁止归档", "当前报警没有记录版本，不能归档。");
+        writeAudit("归档被阻断", `${a.id} 缺少记录版本`, "失败");
+        return;
+      }
+      if (!transition(a, "applicationStatus", "已归档", "人工确认归档报警记录")) return;
+      if (!transition(a, "handleStatus", "已归档", "报警记录已归档")) return;
+      a.submittedMaterialVersion = material.version;
+      a.plugin.record = "已归档";
+      addTimeline(a, "报警记录归档", "人工确认归档报警记录，包含干预、观察、值班接收和证据附件。");
+      toast("记录已归档", `${a.vehicleNo} 的报警记录已归档。`);
+      renderAll();
+    }
+
+    function callCompany() {
+      if (!requirePermission("call", "短信通知值班业务人员")) return;
+      const a = currentAlarm();
+      if (!state.integration.messageGateway) {
+        writeAudit("事件通知被阻断", "短信/消息通道不可用", "失败");
+        toast("事件通知失败", "短信/消息通道不可用，必须人工处理。");
+        return;
+      }
+      const nextCallStatus = a.callStatus === "未触发" ? "短信发送中" : "已通知";
+      if (!transition(a, "callStatus", nextCallStatus, "值班事件短信通知")) return;
+      a.plugin.enterpriseNotify = a.callStatus === "已通知" ? "值班已接收" : "短信发送中";
+      addTimeline(
+        a,
+        "值班短信通知",
+        a.callStatus === "已通知"
+          ? "值班业务人员已打开事件详情页，系统提供企业负责人沟通话术和人工拨号入口。"
+          : `已向值班业务人员发送事件短信：${a.vehicleNo} · ${a.alarmType} · ${a.plugin.correction}。`
+      );
+      toast("事件通知已触发", a.callStatus === "已通知" ? "值班业务人员已接收事件详情。" : "已发送值班短信，等待接收确认。");
+      renderAll();
+    }
+
+    function takeover() {
+      if (!requirePermission("takeover", "事件详情页接手")) return;
+      const a = currentAlarm();
+      a.takenBy = "王主管";
+      if (!transition(a, "handleStatus", "待人工确认", "事件详情页接手后进入人工确认")) return;
+      addTimeline(a, "事件详情页接手", "王主管在事件详情页点击“我来接手”，状态已同步到 PC 工作台。");
+      toast("已接手", "事件详情页和 PC 状态已同步。");
+      renderAll();
+    }
+
+    function closeAlarm() {
+      const a = currentAlarm();
+      if (a.riskLevel === "高" && !requirePermission("closeHighRisk", "闭环高风险报警")) return;
+      if (validateAlarm(a).length) {
+        toast("禁止闭环", "当前报警存在一致性问题，不能标记已处理。请到 MVP风控 查看详情。");
+        writeAudit("闭环被阻断", `${a.id} 存在 ${validateAlarm(a).length} 个一致性问题`, "失败");
+        return;
+      }
+      if (!transition(a, "handleStatus", "已处理", "人工确认闭环")) return;
+      addTimeline(a, "标记已处理", "人工确认报警处置完成，进入台账归档。");
+      toast("报警已闭环", `${a.vehicleNo} 已标记为已处理。`);
+      renderAll();
+    }
+
+    function simulateNewAlarm() {
+      const id = `AL${Date.now().toString().slice(-10)}`;
+      const sample = {
+        id,
+        alarmType: "接打手持电话",
+        vehicleNo: "演示车辆-" + Math.floor(100 + Math.random() * 899),
+        company: "示例客运企业 D",
+        driver: "赵某",
+        alarmTime: "2026-06-18 15:42:18",
+        receiveTime: "2026-06-18 15:42:21",
+        location: "示例城区道路 D",
+        speed: 62,
+        status: "新报警",
+        riskLevel: "中",
+        handleStatus: "待人工确认",
+        ai: null,
+        applicationStatus: "未生成",
+        callStatus: "未触发",
+        materialVersions: [],
+        submittedMaterialVersion: null,
+        plugin: {
+          popup: "已捕获",
+          dom: "待读取",
+          vlm: "待分析",
+          llm: "待生成话术",
+          voice: "未对讲",
+          driverReply: "未识别",
+          correction: "未观察",
+          observationWindow: "60秒",
+          enterpriseNotify: "未通知",
+          record: "未生成"
+        },
+        takenBy: "",
+        platformStatus: "新报警已从省平台弹窗采集，等待处置。",
+        evidence: ["报警截图", "视频帧"],
+        timeline: [["15:42:21", "模拟新报警", "系统新增接打手持电话报警并采集详情。"]]
+      };
+      state.alarms.unshift(sample);
+      state.activeAlarmId = id;
+      state.filter = "全部";
+      switchView("workbench");
+      toast("模拟新报警", `${sample.vehicleNo} 已进入实时报警队列。`);
+    }
+
+    function renderWorkbench() {
+      if (!$("view-workbench").classList.contains("active")) return;
+      renderStats();
+      renderFilters();
+      renderAlarmList();
+      renderDetail();
+      renderAiPanel();
+      $("unclosedBadge").textContent = `未闭环 ${state.alarms.filter(a => a.handleStatus !== "已处理").length}`;
+    }
+
+    function renderMvp() {
+      $("view-mvp").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>MVP 风险控制台</h1>
+            <p>把第一阶段从“大而全平台”收敛为可验证闭环：先证明插件能稳定监听报警弹窗、完成对讲干预、观察纠正、短信通知值班业务人员并生成记录。</p>
+          </div>
+          <button class="btn primary" onclick="switchView('workbench')">回到处置闭环</button>
+        </div>
+
+        <div class="list-grid">
+          <div class="card">
+            <div class="card-head"><h2>第一阶段保留</h2><span class="badge green">P0</span></div>
+            <div class="card-body">
+              <ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.85">
+                <li>浏览器插件报警弹窗监听与详情读取稳定性验证</li>
+                <li>重点报警干预工作台</li>
+                <li>人工确认和人工接管</li>
+                <li>文字下发、语音对讲、司机回复和纠正观察留痕</li>
+                <li>基础台账导出</li>
+                <li>少量报警类型的 DOM/VLM/LLM 干预建议</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>第一阶段后置</h2><span class="badge amber">延后</span></div>
+            <div class="card-body">
+              <ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.85">
+                <li>完整管理看板深度分析</li>
+                <li>多企业复杂规则配置</li>
+                <li>复杂企业通讯录和多级升级策略</li>
+                <li>短信 / 企业微信正式双向回执接入</li>
+                <li>全量 19 类报警覆盖</li>
+                <li>自动巡检和设备运维闭环</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>上线红线</h2><span class="badge red">必须满足</span></div>
+            <div class="card-body">
+              <ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.85">
+                <li>插件读取失败必须显式告警</li>
+                <li>高风险和低置信度必须人工确认</li>
+                <li>报警记录必须保留版本和证据来源</li>
+                <li>值班短信失败不能标记已通知</li>
+                <li>导出数据必须脱敏和留访问日志</li>
+                <li>状态流转必须可审计、可回放</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid" style="margin-top:16px">
+          <div class="card">
+            <div class="card-head"><h2>外部依赖健康检查</h2><span class="badge blue">可模拟故障</span></div>
+            <div class="card-body">
+              <table class="table">
+                <thead><tr><th>依赖</th><th>当前状态</th><th>失败影响</th><th>操作</th></tr></thead>
+                <tbody>
+                  ${integrationRow("alarmCapture", "省平台报警读取", "无法监听新报警、无法读取详情，所有自动处置应阻断")}
+                  ${integrationRow("domAccess", "浏览器插件 DOM 读取", "无法读取弹窗、车辆、司机、企业和平台按钮状态")}
+                  ${integrationRow("vlmService", "VLM 视频帧识别", "无法判断司机动作、画面遮挡和是否纠正")}
+                  ${integrationRow("llmService", "LLM 话术与记录生成", "无法生成固定话术、摘要和报警记录草稿")}
+                  ${integrationRow("videoEvidence", "视频与截图证据", "无法判断司机是否纠正，记录生成需人工补证")}
+                  ${integrationRow("textDelivery", "文本下发入口", "不能自动下发文本，只能提示人工操作")}
+                  ${integrationRow("voiceChannel", "语音对讲通道", "不能播放标准语音提醒，高风险需电话或人工接管")}
+                  ${integrationRow("localVoiceModel", "本地语音模型播放", "无法通过平台语音对讲播放固定话术")}
+                  ${integrationRow("driverAsr", "司机语音回复识别", "不能自动记录司机是否回应，只能靠人工备注")}
+                  ${integrationRow("phoneGateway", "人工拨号入口", "事件详情页不能提供企业负责人一键拨号入口")}
+                  ${integrationRow("messageGateway", "短信/消息通道", "不能短信通知值班业务人员接收事件")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>状态机约束</h2></div>
+            <div class="card-body">
+              <div class="rank-list">
+                ${rank("禁止跳过", "未生成报警记录 → 归档", "已阻断")}
+                ${rank("禁止伪成功", "通知通道异常 → 已通知", "已阻断")}
+                ${rank("禁止无证据", "视频证据缺失 → 报警记录", "已阻断")}
+                ${rank("强制人工", "高风险 / 低置信度", "需确认")}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <h2>数据一致性扫描</h2>
+            <span class="badge ${validationSummary().length ? "red" : "green"}">${validationSummary().length ? `${validationSummary().length} 个问题` : "通过"}</span>
+          </div>
+          <div class="card-body">
+            ${validationSummary().length ? `
+              <table class="table">
+                <thead><tr><th>报警</th><th>当前状态</th><th>问题</th><th>操作</th></tr></thead>
+                <tbody>
+                  ${validationSummary().map(item => `<tr>
+                    <td>${item.alarm.vehicleNo} · ${item.alarm.alarmType}</td>
+                    <td>${item.alarm.handleStatus} / ${item.alarm.applicationStatus} / ${item.alarm.callStatus}</td>
+                    <td>${item.issue}</td>
+                    <td><button class="btn" onclick="openAlarm('${item.alarm.id}')">查看</button></td>
+                  </tr>`).join("")}
+                </tbody>
+              </table>
+            ` : `<p style="margin:0;color:var(--muted);line-height:1.6">当前报警数据未发现明显状态矛盾。注意：这只验证原型内置状态约束，不代表真实省平台数据已可信。</p>`}
+          </div>
+        </div>
+
+        <div class="dashboard-grid" style="margin-top:16px">
+          <div class="card">
+            <div class="card-head"><h2>角色权限矩阵</h2><span class="badge blue">当前：${state.currentRole}</span></div>
+            <div class="card-body">
+              <table class="table">
+                <thead><tr><th>角色</th><th>允许动作</th><th>禁止重点</th></tr></thead>
+                <tbody>
+                  <tr><td>监控员</td><td>弹窗监听、识别、文本/语音干预、司机回复识别、纠正观察、生成记录、事件通知、备注</td><td>不能归档记录；不能闭环高风险；不能导出</td></tr>
+                  <tr><td>值班主管</td><td>归档记录、闭环高风险、导出、全部处置动作</td><td>不能绕过记录版本和状态机</td></tr>
+                  <tr><td>管理层</td><td>查看看板、导出报表</td><td>不能直接处置报警或修改记录状态</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>报警记录版本链</h2></div>
+            <div class="card-body">
+              <table class="table">
+                <thead><tr><th>报警</th><th>最新版本</th><th>提交版本</th></tr></thead>
+                <tbody>
+                  ${state.alarms.map(a => {
+                    const material = latestMaterial(a);
+                    return `<tr><td>${a.vehicleNo} · ${a.alarmType}</td><td>${material ? `v${material.version} · ${material.author}` : "未生成"}</td><td>${a.submittedMaterialVersion ? `v${a.submittedMaterialVersion}` : "未提交"}</td></tr>`;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-head"><h2>审计日志</h2><button class="btn" onclick="state.audit=[];renderAll()">清空演示日志</button></div>
+          <div class="card-body">
+            <table class="table">
+              <thead><tr><th>动作</th><th>详情</th><th>结果</th></tr></thead>
+              <tbody>${state.audit.map(row => `<tr><td>${row[0]}</td><td>${row[1]}</td><td><span class="badge ${row[2].includes("失败") ? "red" : "green"}">${row[2]}</span></td></tr>`).join("")}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function integrationRow(key, label, impact) {
+      const ok = state.integration[key];
+      return `<tr>
+        <td>${label}</td>
+        <td><span class="badge ${ok ? "green" : "red"}">${ok ? "正常" : "异常"}</span></td>
+        <td>${impact}</td>
+        <td><button class="btn ${ok ? "" : "danger"}" onclick="toggleIntegration('${key}')">${ok ? "模拟故障" : "恢复"}</button></td>
+      </tr>`;
+    }
+
+    function makeAcceptanceAlarm(overrides = {}) {
+      return {
+        id: "TEST-ACCEPTANCE",
+        alarmType: "抽烟报警",
+        vehicleNo: "演示车辆-测试",
+        company: "验收测试企业",
+        driver: "测试驾驶员",
+        alarmTime: "2026-06-18 16:00:00",
+        receiveTime: "2026-06-18 16:00:03",
+        location: "验收测试路段",
+        speed: 50,
+        status: "待人工确认",
+        riskLevel: "中",
+        handleStatus: "待人工确认",
+        ai: null,
+        applicationStatus: "未生成",
+        callStatus: "未触发",
+        materialVersions: [],
+        submittedMaterialVersion: null,
+        plugin: {
+          popup: "已捕获",
+          dom: "待读取",
+          vlm: "待分析",
+          llm: "待生成话术",
+          voice: "未对讲",
+          driverReply: "未识别",
+          correction: "未观察",
+          observationWindow: "60秒",
+          enterpriseNotify: "未通知",
+          record: "未生成"
+        },
+        takenBy: "",
+        evidence: ["报警截图", "视频帧", "速度曲线", "处置记录"],
+        timeline: [],
+        ...overrides
+      };
+    }
+
+    function assertCase(name, detail, pass) {
+      return { name, detail, pass: Boolean(pass) };
+    }
+
+    function runAcceptanceSuite() {
+      const results = [];
+      const previousRole = state.currentRole;
+
+      const testAlarm = makeAcceptanceAlarm();
+      results.push(assertCase("状态机阻断跳步归档", "未生成报警记录不能直接归档", !transition(testAlarm, "applicationStatus", "已归档", "验收测试非法跳转")));
+
+      const callAlarm = makeAcceptanceAlarm();
+      results.push(assertCase("状态机阻断通知伪成功", "未触发值班事件通知不能直接变为已通知", !transition(callAlarm, "callStatus", "已通知", "验收测试非法通知状态")));
+
+      const validAlarm = makeAcceptanceAlarm();
+      const validFlow =
+        transition(validAlarm, "handleStatus", "AI识别完成", "验收主链路") &&
+        transition(validAlarm, "applicationStatus", "待生成记录", "验收主链路") &&
+        transition(validAlarm, "applicationStatus", "记录草稿", "验收主链路");
+      validAlarm.plugin.popup = "已捕获";
+      validAlarm.plugin.dom = "已读取";
+      validAlarm.plugin.vlm = "已分析";
+      validAlarm.plugin.llm = "已生成话术";
+      validAlarm.plugin.voice = "已对讲";
+      validAlarm.plugin.driverReply = "已回应：收到";
+      validAlarm.plugin.correction = "已纠正";
+      validAlarm.plugin.enterpriseNotify = "未通知";
+      validAlarm.ai = {
+        truthResult: "需干预",
+        confidence: "中",
+        applyRecommendation: "待生成记录",
+        reasonSummary: "验收报警记录生成",
+        evidencePoints: [],
+        nextAction: "归档报警记录"
+      };
+      createMaterialVersion(validAlarm, "验收报警记录生成");
+      validAlarm.plugin.record = "已生成草稿";
+      results.push(assertCase("主链路生成报警记录", "弹窗捕获、识别、对讲、观察后生成 v1 报警记录", validFlow && latestMaterial(validAlarm)?.version === 1 && validAlarm.plugin.correction === "已纠正"));
+
+      state.currentRole = "监控员";
+      results.push(assertCase("监控员权限拒绝归档", "监控员不能执行记录归档", !requirePermission("submitApplication", "验收：归档报警记录")));
+
+      state.currentRole = "值班主管";
+      results.push(assertCase("主管权限允许归档", "值班主管可以归档报警记录", requirePermission("submitApplication", "验收：归档报警记录")));
+
+      const badMaterialAlarm = makeAcceptanceAlarm({
+        applicationStatus: "已归档",
+        submittedMaterialVersion: null,
+        ai: { confidence: "中" }
+      });
+      results.push(assertCase("一致性扫描发现记录缺失", "已归档必须绑定报警记录版本", validateAlarm(badMaterialAlarm).some(i => i.includes("记录版本"))));
+
+      const highRiskAlarm = makeAcceptanceAlarm({
+        riskLevel: "高",
+        handleStatus: "已处理",
+        takenBy: ""
+      });
+      results.push(assertCase("一致性扫描发现高风险无接手人", "高风险报警闭环前必须有人接手", validateAlarm(highRiskAlarm).some(i => i.includes("接手人"))));
+
+      const requiredIntegrations = ["alarmCapture", "domAccess", "vlmService", "llmService", "videoEvidence", "textDelivery", "voiceChannel", "localVoiceModel", "driverAsr", "phoneGateway", "messageGateway"];
+      results.push(assertCase("外部依赖检查完整", "浏览器插件、模型、语音、通知核心依赖均有显式状态", requiredIntegrations.every(key => key in state.integration)));
+
+      state.currentRole = previousRole;
+      state.acceptanceResults = results;
+      writeAudit("验收演练", `执行 ${results.length} 个用例，通过 ${results.filter(r => r.pass).length} 个`, results.every(r => r.pass) ? "成功" : "失败");
+      toast("验收演练完成", `通过 ${results.filter(r => r.pass).length}/${results.length} 个用例。`);
+      renderAll();
+    }
+
+    function renderAcceptance() {
+      const passed = state.acceptanceResults.filter(r => r.pass).length;
+      const total = state.acceptanceResults.length;
+      $("view-acceptance").innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>验收演练</h1>
+            <p>用内置用例验证报警弹窗监听、DOM/VLM/LLM 识别、语音对讲、司机回复、纠正观察、值班短信、记录版本、权限和一致性扫描。</p>
+          </div>
+          <button class="btn primary" onclick="runAcceptanceSuite()">运行验收演练</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span>用例总数</span><strong>${total || 0}<em>cases</em></strong></div>
+          <div class="stat"><span>通过</span><strong>${passed || 0}<em>pass</em></strong></div>
+          <div class="stat"><span>失败</span><strong>${total ? total - passed : 0}<em>fail</em></strong></div>
+          <div class="stat"><span>主链路</span><strong>${state.acceptanceResults.some(r => r.name.includes("主链路") && r.pass) ? "OK" : "--"}<em>flow</em></strong></div>
+          <div class="stat"><span>权限</span><strong>${state.acceptanceResults.some(r => r.name.includes("权限") && r.pass) ? "OK" : "--"}<em>rbac</em></strong></div>
+          <div class="stat"><span>状态机</span><strong>${state.acceptanceResults.some(r => r.name.includes("状态机") && r.pass) ? "OK" : "--"}<em>fsm</em></strong></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>验收结果</h2>
+            <span class="badge ${total && passed === total ? "green" : total ? "red" : "blue"}">${total ? `${passed}/${total}` : "未运行"}</span>
+          </div>
+          <div class="card-body">
+            ${total ? `
+              <table class="table">
+                <thead><tr><th>用例</th><th>验证点</th><th>结果</th></tr></thead>
+                <tbody>
+                  ${state.acceptanceResults.map(r => `<tr><td>${r.name}</td><td>${r.detail}</td><td><span class="badge ${r.pass ? "green" : "red"}">${r.pass ? "通过" : "失败"}</span></td></tr>`).join("")}
+                </tbody>
+              </table>
+            ` : `<p style="margin:0;color:var(--muted);line-height:1.6">尚未运行验收演练。点击右上角按钮后，系统会执行一组非破坏性用例，并把结果写入审计日志。</p>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDashboard() {
+      const total = state.alarms.length;
+      const high = state.alarms.filter(a => a.riskLevel === "高").length;
+      const unclosed = state.alarms.filter(a => a.handleStatus !== "已处理").length;
+      const recordPending = state.alarms.filter(a => a.applicationStatus === "待生成记录" || a.applicationStatus === "记录草稿" || a.applicationStatus === "待归档确认").length;
+      const notifyPending = state.alarms.filter(a => a.plugin?.correction === "未纠正" && a.plugin?.enterpriseNotify !== "值班已接收").length;
+      $("view-dashboard").innerHTML = `
+        <div class="page-head">
+          <div><h1>管理看板</h1><p>一眼查看今日报警、未纠正、事件通知、记录归档和排名风险。</p></div>
+          <button class="btn primary" onclick="exportReport()">导出管理日报</button>
+        </div>
+        <div class="stats" id="dashboardStats"></div>
+        <div class="dashboard-grid">
+          <div>
+            <div class="chart-row">
+              <div class="card"><div class="card-head"><h2>报警类型分布</h2></div><div class="card-body"><div class="bar-chart">
+                ${bar("抽烟报警", countType("抽烟报警"), total)}
+                ${bar("生理疲劳", countType("生理疲劳"), total)}
+                ${bar("超速驾驶", countType("超速驾驶"), total)}
+                ${bar("接打电话", countType("接打手持电话"), total)}
+              </div></div></div>
+              <div class="card"><div class="card-head"><h2>处置闭环状态</h2></div><div class="card-body"><div class="bar-chart">
+                ${bar("未闭环", unclosed, total, "var(--red)")}
+                ${bar("高风险", high, total, "var(--amber)")}
+                ${bar("待生成记录", recordPending, total, "var(--blue)")}
+                ${bar("已处理", state.alarms.filter(a => a.handleStatus === "已处理").length, total, "var(--green)")}
+              </div></div></div>
+            </div>
+            <div class="card"><div class="card-head"><h2>未闭环报警</h2><button class="btn" onclick="switchView('workbench')">进入工作台</button></div><div class="card-body">${renderTable(state.alarms.filter(a => a.handleStatus !== "已处理"))}</div></div>
+          </div>
+          <div class="card"><div class="card-head"><h2>重点风险榜单</h2></div><div class="card-body"><div class="rank-list">
+            ${rank("高风险企业", "示例客运企业 B", `${high} 起夜间高风险`)}
+            ${rank("重点车辆", currentAlarm().vehicleNo, "存在未闭环报警")}
+            ${rank("高频驾驶员", "李某", "疲劳驾驶需复核")}
+            ${rank("待接收事件", "值班业务人员", `${notifyPending} 次待确认`)}
+            ${rank("可能影响排名事项", "未纠正/未闭环", `${unclosed} 项待处理`)}
+          </div></div></div>
+        </div>
+      `;
+      renderStats("dashboardStats");
+    }
+
+    function countType(type) {
+      return state.alarms.filter(a => a.alarmType === type).length;
+    }
+
+    function bar(label, value, total, color) {
+      const pct = total ? Math.max(8, Math.round(value / total * 100)) : 0;
+      return `<div class="bar"><span>${label}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%;${color ? `background:${color}` : ""}"></div></div><b>${value}</b></div>`;
+    }
+
+    function rank(label, title, meta) {
+      return `<div class="rank-item"><div><strong>${label}</strong><span>${title}</span></div><span class="badge amber">${meta}</span></div>`;
+    }
+
+    function renderTable(rows) {
+      return `<table class="table"><thead><tr><th>报警</th><th>车牌</th><th>企业</th><th>处置状态</th><th>记录状态</th><th>操作</th></tr></thead><tbody>
+        ${rows.map(a => `<tr><td>${a.alarmType}</td><td>${a.vehicleNo}</td><td>${a.company}</td><td><span class="badge ${severityClass(a.handleStatus)}">${a.handleStatus}</span></td><td><span class="badge ${severityClass(a.applicationStatus)}">${a.applicationStatus}</span></td><td><button class="btn" onclick="openAlarm('${a.id}')">查看</button></td></tr>`).join("")}
+      </tbody></table>`;
+    }
+
+    function openAlarm(id) {
+      state.activeAlarmId = id;
+      switchView("workbench");
+    }
+
+    function renderApplications() {
+      const rows = state.alarms.filter(a => a.applicationStatus !== "未生成" || a.plugin?.record !== "未生成");
+      $("view-applications").innerHTML = `
+        <div class="page-head"><div><h1>记录中心</h1><p>管理报警记录草稿、待归档确认、已归档、需补证和证据附件。</p></div><button class="btn primary" onclick="makeMaterial()">生成当前报警记录</button></div>
+        <div class="card"><div class="card-head"><h2>报警记录列表</h2><div class="seg"><button class="active">全部</button><button>待归档</button><button>需补证</button><button>已归档</button></div></div><div class="card-body">${renderTable(rows.length ? rows : state.alarms)}</div></div>
+        <div class="list-grid" style="margin-top:16px">
+          <div class="card"><div class="card-head"><h2>记录草稿</h2></div><div class="card-body"><p style="color:var(--muted);line-height:1.6">记录草稿由弹窗字段、DOM 读取结果、视频帧判断、对讲话术、司机回复、纠正观察和值班事件接收结果组成。最终归档前需主管确认。</p></div></div>
+          <div class="card"><div class="card-head"><h2>证据包</h2></div><div class="card-body"><div class="badges"><span class="badge blue">报警截图</span><span class="badge blue">视频截图</span><span class="badge blue">速度曲线</span><span class="badge blue">语音对讲</span><span class="badge blue">值班短信记录</span></div></div></div>
+          <div class="card"><div class="card-head"><h2>人工确认边界</h2></div><div class="card-body"><p style="color:var(--muted);line-height:1.6">高风险、司机未纠正、通知失败、低置信度识别和记录最终归档必须人工确认。</p></div></div>
+        </div>
+      `;
+    }
+
+    function renderCalls() {
+      $("view-calls").innerHTML = `
+        <div class="page-head"><div><h1>事件通知中心</h1><p>司机未纠正、无法判断或高风险报警时，短信通知值班业务人员；事件详情页提供企业负责人话术、一键复制和人工拨号入口。</p></div><button class="btn warn" onclick="callCompany()">发送当前事件短信</button></div>
+        <div class="card"><div class="card-head"><h2>事件接收任务</h2><button class="btn" onclick="upgradeCall()">标记值班已接收</button></div><div class="card-body">
+          <table class="table"><thead><tr><th>报警</th><th>企业</th><th>车牌</th><th>触发原因</th><th>接收人</th><th>状态</th><th>操作</th></tr></thead><tbody>
+          ${state.alarms.map(a => `<tr><td>${a.alarmType}</td><td>${a.company}</td><td>${a.vehicleNo}</td><td>${a.riskLevel === "高" ? "夜间高风险/未回应" : "未纠正或无法判断"}</td><td>王主管 / 李值班</td><td><span class="badge ${severityClass(a.callStatus)}">${a.callStatus}</span></td><td><button class="btn" onclick="openAlarm('${a.id}')">查看报警</button></td></tr>`).join("")}
+          </tbody></table>
+        </div></div>
+        <div class="card" style="margin-top:16px"><div class="card-head"><h2>事件短信模板</h2></div><div class="card-body"><p style="margin:0;color:var(--muted);line-height:1.7">【三客一危报警处置】车辆【车牌号】于【报警时间】发生【报警类型】，平台已进行提醒，当前结果为【未纠正/无法判断/高风险】。请点击事件详情页查看证据、处置建议和企业负责人沟通话术。</p></div></div>
+      `;
+    }
+
+    function upgradeCall() {
+      const a = currentAlarm();
+      if (!requireIntegration("messageGateway", "短信/消息通道")) return;
+      if (!transition(a, "callStatus", "已通知", "值班业务人员确认接收事件")) return;
+      a.plugin.enterpriseNotify = "值班已接收";
+      addTimeline(a, "值班已接收", "值班业务人员已打开事件详情页，并可复制企业负责人沟通话术或人工拨号。");
+      toast("值班已接收", "事件通知状态已更新为已通知。");
+      renderAll();
+    }
+
+    function renderReports() {
+      $("view-reports").innerHTML = `
+        <div class="page-head"><div><h1>数据报表</h1><p>报警处置台账、语音对讲台账、值班事件台账、未闭环清单和企业风险统计。</p></div><button class="btn primary" onclick="exportReport()">导出 Excel</button></div>
+        <div class="stats" id="reportStats"></div>
+        <div class="card"><div class="card-head"><h2>报警处置台账</h2><div class="seg"><button class="active">日报</button><button>周报</button><button>月报</button></div></div><div class="card-body">${renderTable(state.alarms)}</div></div>
+      `;
+      renderStats("reportStats");
+    }
+
+    function exportReport() {
+      if (!requirePermission("export", "导出台账报表")) return;
+      toast("导出任务已创建", "已模拟生成日报、报警干预台账和值班事件台账。");
+    }
+
+    function renderRules() {
+      $("view-rules").innerHTML = `
+        <div class="page-head"><div><h1>规则 SOP 配置</h1><p>配置报警弹窗识别、固定话术、司机回复识别、纠正观察窗口、值班事件通知和报警记录模板。第一阶段模板需客户审核。</p></div><button class="btn primary">保存规则</button></div>
+        <div class="list-grid">
+          ${ruleCard("报警弹窗识别规则", ["优先监听右下角报警提示弹窗", "读取车牌、报警类型、报警时间、查看报警入口", "弹窗关闭或收起时使用报警列表兜底"])}
+          ${ruleCard("司机干预规则", ["抽烟/接打电话/疲劳：优先语音对讲", "语音不可用时使用文字下发", "话术使用固定审核模板，不允许 LLM 自由发挥"])}
+          ${ruleCard("未纠正升级规则", ["对讲后进入 60 秒观察窗口", "司机未回应或视频行为未纠正：短信通知值班业务人员", "事件详情页提供企业负责人话术、一键复制和人工拨号入口"])}
+        </div>
+        <div class="card" style="margin-top:16px"><div class="card-head"><h2>接收人与企业通讯录</h2></div><div class="card-body"><table class="table"><thead><tr><th>企业</th><th>值班接收人</th><th>企业负责人</th><th>首版动作</th></tr></thead><tbody><tr><td>示例运输企业 A</td><td>王主管 138****1001</td><td>李经理 138****0001</td><td>短信接收 / 人工拨号</td></tr><tr><td>示例客运企业 B</td><td>李值班 137****1002</td><td>赵主管 137****0003</td><td>短信接收 / 复制话术</td></tr></tbody></table></div></div>
+      `;
+    }
+
+    function ruleCard(title, items) {
+      return `<div class="card"><div class="card-head"><h2>${title}</h2></div><div class="card-body"><ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.8">${items.map(i => `<li>${i}</li>`).join("")}</ul></div></div>`;
+    }
+
+    function renderMobile() {
+      const a = currentAlarm();
+      $("view-mobile").innerHTML = `
+        <div class="page-head"><div><h1>事件详情页</h1><p>值班业务人员在手机查看报警、司机对讲、纠正观察、事件短信、企业负责人话术和报警记录，并远程接手或备注。</p></div><button class="btn primary" onclick="takeover()">我来接手当前报警</button></div>
+        <div class="phone-shell"><div class="phone-screen"><div class="phone-top"><b>值班事件详情</b><span>今日报警 ${state.alarms.length} · 未闭环 ${state.alarms.filter(x => x.handleStatus !== "已处理").length}</span></div><div class="phone-body">
+          <div class="mobile-metrics"><div class="mobile-card"><span>未纠正</span><strong>${state.alarms.filter(x => x.plugin?.correction === "未纠正").length}</strong></div><div class="mobile-card"><span>高风险</span><strong>${state.alarms.filter(x => x.riskLevel === "高").length}</strong></div><div class="mobile-card"><span>待接收事件</span><strong>${state.alarms.filter(x => x.plugin?.enterpriseNotify === "待升级" || x.plugin?.enterpriseNotify === "短信发送中").length}</strong></div><div class="mobile-card"><span>需我接手</span><strong>${state.alarms.filter(x => !x.takenBy && x.riskLevel === "高").length}</strong></div></div>
+          ${state.alarms.map(x => `<div class="mobile-alarm"><strong>${x.alarmType} · ${x.vehicleNo}</strong><span>${x.company}<br>司机：${x.plugin?.driverReply || "未识别"} · 纠正：${x.plugin?.correction || "未观察"} · 通知：${x.plugin?.enterpriseNotify || "未通知"}</span><div class="badges"><span class="badge ${severityClass(x.riskLevel)}">${x.riskLevel}风险</span><span class="badge blue">${x.takenBy || "未接手"}</span></div></div>`).join("")}
+          <button class="btn primary" style="width:100%;margin-top:8px" onclick="takeover()">我来接手：${a.vehicleNo}</button>
+          <button class="btn" style="width:100%;margin-top:8px" onclick="openNoteModal()">添加备注</button>
+        </div></div></div>
+      `;
+    }
+
+    function openNoteModal() {
+      $("modalTitle").textContent = "添加人工备注";
+      $("modalBody").innerHTML = `<div class="form-grid"><div class="field"><label>当前报警</label><input value="${currentAlarm().id} · ${currentAlarm().vehicleNo}" disabled></div><div class="field"><label>处理动作</label><select id="noteAction"><option>人工复核</option><option>司机未纠正</option><option>值班已接收</option><option>生成报警记录</option><option>确认闭环</option></select></div><div class="field full"><label>备注内容</label><textarea id="noteText">已查看事件详情页，复制企业负责人沟通话术，准备人工联系企业核实处理。</textarea></div></div>`;
+      $("modalFoot").innerHTML = `<button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveNote()">保存备注</button>`;
+      $("modalBackdrop").classList.add("show");
+    }
+
+    function saveNote() {
+      const a = currentAlarm();
+      addTimeline(a, $("noteAction").value, $("noteText").value);
+      closeModal();
+      toast("备注已保存", "人工备注已同步到处置时间线和台账。");
+      renderAll();
+    }
+
+    function closeModal() {
+      $("modalBackdrop").classList.remove("show");
+    }
+
+    function toast(title, text) {
+      const item = document.createElement("div");
+      item.className = "toast-item";
+      item.innerHTML = `<strong>${title}</strong><span>${text}</span>`;
+      $("toast").appendChild(item);
+      setTimeout(() => item.remove(), 3600);
+    }
+
+    function renderAll() {
+      renderWorkbench();
+      if (state.activeView === "mvp") renderMvp();
+      if (state.activeView === "acceptance") renderAcceptance();
+      if (state.activeView === "dashboard") renderDashboard();
+      if (state.activeView === "applications") renderApplications();
+      if (state.activeView === "calls") renderCalls();
+      if (state.activeView === "reports") renderReports();
+      if (state.activeView === "rules") renderRules();
+      if (state.activeView === "mobile") renderMobile();
+    }
+
+    function bindActions() {
+      $("simulateBtn").addEventListener("click", simulateNewAlarm);
+      $("openMobileBtn").addEventListener("click", () => switchView("mobile"));
+      $("globalSearch").addEventListener("input", renderAlarmList);
+      $("roleSelect").addEventListener("change", event => {
+        state.currentRole = event.target.value;
+        writeAudit("角色切换", `当前操作者切换为 ${state.currentRole}`, "成功");
+        renderAll();
+      });
+      $("popupBtn").addEventListener("click", detectPopup);
+      $("analyzeBtn").addEventListener("click", analyzeAlarm);
+      $("textBtn").addEventListener("click", sendText);
+      $("voiceBtn").addEventListener("click", sendVoice);
+      $("replyBtn").addEventListener("click", recognizeDriverReply);
+      $("observeBtn").addEventListener("click", observeCorrection);
+      $("callBtn").addEventListener("click", callCompany);
+      $("materialBtn").addEventListener("click", makeMaterial);
+      $("submitBtn").addEventListener("click", submitApplication);
+      $("takeoverBtn").addEventListener("click", takeover);
+      $("closeBtn").addEventListener("click", closeAlarm);
+      $("addNoteBtn").addEventListener("click", openNoteModal);
+      $("modalClose").addEventListener("click", closeModal);
+      $("modalBackdrop").addEventListener("click", event => {
+        if (event.target === $("modalBackdrop")) closeModal();
+      });
+    }
+
+    setIconButtons();
+    renderNav();
+    bindActions();
+    renderAll();
+  </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "version": "draft-2026-07-18",
+  "status": "PENDING_CONFIRMATION",
+  "updatedAt": "2026-07-18T00:00:00.000Z",
+  "changeNote": "从现有项目文档和交互原型提取的规则草案，仅用于演练，不得驱动真实车辆。",
+  "rules": [
+    {
+      "id": "draft-fatigue",
+      "name": "疲劳驾驶转人工规则",
+      "enabled": true,
+      "approvalStatus": "PENDING",
+      "priority": 100,
+      "match": { "alarmNames": ["生理疲劳报警", "疲劳驾驶报警"], "alarmAliases": ["疲劳报警"] },
+      "reminderPolicy": {
+        "category": "DRIVER_IMMEDIATE",
+        "driverReminder": "VOICE_REQUIRED",
+        "secondaryChannelMode": "ON_PRIMARY_FAILURE",
+        "completion": { "source": "PLATFORM_STATUS", "fields": ["alarmStatus", "alarmCompleteStatus", "platformStatus"], "clearedValues": {}, "unknownAction": "MANUAL_REVIEW" }
+      },
+      "action": "MANUAL_REVIEW",
+      "voiceTemplateId": "voice-fatigue-v1",
+      "audioAssetId": null,
+      "allowRealIntercom": false,
+      "requireVehicleAllowlist": true,
+      "failureAction": "MANUAL_REVIEW",
+      "effectiveFrom": null,
+      "updatedAt": "2026-07-18T00:00:00.000Z",
+      "changeNote": "高风险，待业务方确认固定话术和真实动作边界。"
+    },
+    {
+      "id": "draft-smoking",
+      "name": "抽烟报警语音提醒草案",
+      "enabled": true,
+      "approvalStatus": "PENDING",
+      "priority": 80,
+      "match": { "alarmTypeIds": ["62"], "alarmNames": ["抽烟报警"] },
+      "reminderPolicy": {
+        "category": "DRIVER_CORRECTION",
+        "driverReminder": "VOICE_PREFERRED",
+        "secondaryChannelMode": "ON_PRIMARY_FAILURE",
+        "completion": { "source": "PLATFORM_STATUS", "fields": ["alarmStatus", "alarmCompleteStatus", "platformStatus"], "clearedValues": {}, "unknownAction": "MANUAL_REVIEW" }
+      },
+      "action": "AUTO_VOICE",
+      "voiceTemplateId": "voice-smoking-v1",
+      "audioAssetId": "audio-smoking-v1",
+      "allowRealIntercom": false,
+      "requireVehicleAllowlist": true,
+      "failureAction": "MANUAL_REVIEW",
+      "effectiveFrom": null,
+      "updatedAt": "2026-07-18T00:00:00.000Z",
+      "changeNote": "待导入审核音频并由业务方确认后启用。"
+    },
+    {
+      "id": "draft-phone",
+      "name": "接打手持电话报警语音提醒草案",
+      "enabled": true,
+      "approvalStatus": "PENDING",
+      "priority": 80,
+      "match": { "alarmNames": ["接打手持电话报警"] },
+      "reminderPolicy": {
+        "category": "DRIVER_CORRECTION",
+        "driverReminder": "VOICE_PREFERRED",
+        "secondaryChannelMode": "ON_PRIMARY_FAILURE",
+        "completion": { "source": "PLATFORM_STATUS", "fields": ["alarmStatus", "alarmCompleteStatus", "platformStatus"], "clearedValues": {}, "unknownAction": "MANUAL_REVIEW" }
+      },
+      "action": "AUTO_VOICE",
+      "voiceTemplateId": "voice-phone-v1",
+      "audioAssetId": "audio-phone-v1",
+      "allowRealIntercom": false,
+      "requireVehicleAllowlist": true,
+      "failureAction": "MANUAL_REVIEW",
+      "effectiveFrom": null,
+      "updatedAt": "2026-07-18T00:00:00.000Z",
+      "changeNote": "待导入审核音频并由业务方确认后启用。"
+    },
+    {
+      "id": "draft-technical",
+      "name": "设备故障仅记录草案",
+      "enabled": true,
+      "approvalStatus": "PENDING",
+      "priority": 40,
+      "match": { "alarmNames": ["设备故障报警"] },
+      "reminderPolicy": {
+        "category": "INTERNAL_CONFIRMATION",
+        "driverReminder": "INTERNAL_ONLY",
+        "secondaryChannelMode": "NONE",
+        "completion": { "source": "MANUAL_CONFIRMATION", "fields": [], "clearedValues": {}, "unknownAction": "MANUAL_REVIEW" }
+      },
+      "action": "RECORD_ONLY",
+      "voiceTemplateId": null,
+      "audioAssetId": null,
+      "allowRealIntercom": false,
+      "requireVehicleAllowlist": true,
+      "failureAction": "MANUAL_REVIEW",
+      "effectiveFrom": null,
+      "updatedAt": "2026-07-18T00:00:00.000Z",
+      "changeNote": "设备故障默认不向司机喊话。"
+    }
+  ]
+}

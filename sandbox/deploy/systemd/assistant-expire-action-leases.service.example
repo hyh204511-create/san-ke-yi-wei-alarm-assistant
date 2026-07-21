@@ -1,0 +1,11 @@
+[Unit]
+Description=Three Passenger Assistant - expire action leases
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=assistant
+Group=assistant
+WorkingDirectory=/opt/three-passenger-assistant/sandbox
+ExecStart=/opt/three-passenger-assistant/sandbox/.venv/bin/python manage.py expire_action_leases

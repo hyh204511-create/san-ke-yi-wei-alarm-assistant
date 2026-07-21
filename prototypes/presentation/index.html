@@ -1,0 +1,1483 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>两客一危智能监管平台 AI 报警处置助手</title>
+  <style>
+    :root {
+      --stage-bg: #05070a;
+      --slide-bg: #071018;
+      --ink: #eef7fb;
+      --muted: #9db4c2;
+      --dim: #5f7482;
+      --cyan: #25d4ff;
+      --cyan-soft: rgba(37, 212, 255, 0.16);
+      --amber: #ffbd4a;
+      --amber-soft: rgba(255, 189, 74, 0.16);
+      --green: #45de91;
+      --red: #ff5f73;
+      --line: rgba(178, 221, 238, 0.18);
+      --panel: rgba(10, 24, 35, 0.82);
+      --panel-strong: rgba(12, 36, 53, 0.94);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--stage-bg);
+      color: var(--ink);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    .deck-viewport {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 14%, rgba(37, 212, 255, 0.14), transparent 28%),
+        radial-gradient(circle at 82% 76%, rgba(255, 189, 74, 0.10), transparent 30%),
+        #05070a;
+    }
+
+    .deck-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      transform-origin: 0 0;
+      background: var(--slide-bg);
+      box-shadow: 0 0 120px rgba(0, 0, 0, 0.42);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      display: block;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(135deg, #071018 0%, #0a1520 52%, #081019 100%);
+      background-size: 96px 96px, 96px 96px, auto;
+      transition: opacity 0.38s ease, visibility 0.38s ease;
+    }
+
+    .slide.active,
+    .slide.visible {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+      z-index: 1;
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(37,212,255,0.08), transparent 28%, transparent 72%, rgba(255,189,74,0.08)),
+        linear-gradient(180deg, rgba(255,255,255,0.035), transparent 18%, transparent 82%, rgba(0,0,0,0.26));
+      pointer-events: none;
+    }
+
+    .slide-inner {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+      padding: 88px 112px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--cyan);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 54px;
+      height: 3px;
+      background: var(--cyan);
+      box-shadow: 0 0 18px rgba(37, 212, 255, 0.9);
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 1320px;
+      margin-top: 42px;
+      font-size: 104px;
+      line-height: 1.05;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      max-width: 1200px;
+      margin-top: 30px;
+      font-size: 72px;
+      line-height: 1.08;
+      font-weight: 820;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 34px;
+      line-height: 1.25;
+      font-weight: 780;
+    }
+
+    .lead {
+      max-width: 1180px;
+      margin-top: 34px;
+      color: #c5dce8;
+      font-size: 34px;
+      line-height: 1.48;
+      font-weight: 500;
+    }
+
+    .emphasis {
+      color: var(--amber);
+    }
+
+    .cyan {
+      color: var(--cyan);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .footer-note {
+      position: absolute;
+      left: 112px;
+      bottom: 64px;
+      color: var(--dim);
+      font-size: 22px;
+    }
+
+    .page-no {
+      position: absolute;
+      right: 112px;
+      bottom: 60px;
+      color: var(--dim);
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cover-metrics {
+      position: absolute;
+      right: 112px;
+      bottom: 118px;
+      display: grid;
+      grid-template-columns: repeat(2, 270px);
+      gap: 18px;
+    }
+
+    .metric {
+      min-height: 126px;
+      padding: 26px 28px;
+      border: 1px solid var(--line);
+      background: rgba(8, 20, 30, 0.76);
+      border-radius: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-size: 40px;
+      line-height: 1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.32;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 34px;
+      margin-top: 54px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      margin-top: 52px;
+    }
+
+    .four-col {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin-top: 48px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 34px;
+      box-sizing: border-box;
+      min-height: 210px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--cyan), transparent 62%);
+      opacity: 0.8;
+    }
+
+    .panel h3 {
+      color: var(--ink);
+      margin-bottom: 18px;
+    }
+
+    .panel p,
+    .panel li {
+      color: #bfd2dc;
+      font-size: 26px;
+      line-height: 1.42;
+    }
+
+    .panel ul {
+      margin: 0;
+      padding-left: 27px;
+    }
+
+    .statement {
+      margin-top: 62px;
+      padding: 54px 64px;
+      border-left: 8px solid var(--amber);
+      background: rgba(255, 189, 74, 0.10);
+      font-size: 46px;
+      line-height: 1.38;
+      font-weight: 760;
+      color: #fff2d2;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 18px;
+      margin-top: 62px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      min-height: 260px;
+      padding: 28px 24px;
+      border: 1px solid rgba(37, 212, 255, 0.28);
+      background: rgba(37, 212, 255, 0.08);
+      border-radius: 8px;
+      position: relative;
+    }
+
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -18px;
+      width: 18px;
+      height: 2px;
+      background: rgba(37, 212, 255, 0.54);
+    }
+
+    .flow-step:last-child::after {
+      display: none;
+    }
+
+    .flow-step b {
+      color: var(--cyan);
+      font-size: 24px;
+    }
+
+    .flow-step strong {
+      display: block;
+      margin-top: 18px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    .flow-step span {
+      display: block;
+      margin-top: 18px;
+      color: #b7ccd8;
+      font-size: 21px;
+      line-height: 1.36;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 42px;
+    }
+
+    .module {
+      min-height: 172px;
+      padding: 24px 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(11, 27, 40, 0.74);
+    }
+
+    .module b {
+      display: block;
+      color: var(--cyan);
+      font-size: 20px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .module strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 28px;
+      line-height: 1.2;
+    }
+
+    .module span {
+      display: block;
+      margin-top: 12px;
+      color: #b8ccd8;
+      font-size: 20px;
+      line-height: 1.35;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 28px;
+      margin-top: 56px;
+    }
+
+    .phase {
+      min-height: 430px;
+      padding: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(10, 25, 36, 0.84);
+    }
+
+    .phase .tag {
+      display: inline-block;
+      padding: 9px 16px;
+      color: #061017;
+      background: var(--cyan);
+      border-radius: 999px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .phase:nth-child(2) .tag {
+      background: var(--amber);
+    }
+
+    .phase:nth-child(3) .tag {
+      background: var(--green);
+    }
+
+    .phase h3 {
+      margin-top: 24px;
+      font-size: 42px;
+    }
+
+    .phase p {
+      margin-top: 22px;
+      color: #bfd2dc;
+      font-size: 27px;
+      line-height: 1.42;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px 28px;
+      margin-top: 46px;
+    }
+
+    .check {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      min-height: 76px;
+      color: #d7e8ef;
+      font-size: 25px;
+      line-height: 1.34;
+    }
+
+    .check::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      margin-top: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 16px rgba(69, 222, 145, 0.65);
+    }
+
+    .risk-table {
+      margin-top: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(9, 21, 31, 0.72);
+    }
+
+    .scenario-board {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 34px;
+      margin-top: 48px;
+    }
+
+    .scenario-screen {
+      min-height: 560px;
+      border: 1px solid rgba(37, 212, 255, 0.28);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(37, 212, 255, 0.10), transparent 42%),
+        rgba(4, 13, 21, 0.86);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+      padding: 30px;
+      box-sizing: border-box;
+    }
+
+    .screen-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 22px;
+    }
+
+    .alarm-card {
+      margin-top: 30px;
+      padding: 28px;
+      border-radius: 8px;
+      background: rgba(255, 95, 115, 0.12);
+      border: 1px solid rgba(255, 95, 115, 0.38);
+    }
+
+    .alarm-card strong {
+      display: block;
+      color: #ffd7dd;
+      font-size: 42px;
+      line-height: 1.1;
+    }
+
+    .alarm-card span {
+      display: block;
+      margin-top: 16px;
+      color: #d6e6ee;
+      font-size: 25px;
+      line-height: 1.36;
+    }
+
+    .screen-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .screen-tile {
+      min-height: 114px;
+      padding: 18px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.055);
+      color: #bfd2dc;
+      font-size: 22px;
+      line-height: 1.32;
+    }
+
+    .scenario-steps {
+      display: grid;
+      gap: 16px;
+    }
+
+    .scenario-step {
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 20px;
+      align-items: start;
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(10, 25, 36, 0.82);
+    }
+
+    .scenario-step b {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      color: #061017;
+      background: var(--cyan);
+      font-size: 22px;
+    }
+
+    .scenario-step strong {
+      display: block;
+      font-size: 27px;
+      line-height: 1.2;
+    }
+
+    .scenario-step span {
+      display: block;
+      margin-top: 9px;
+      color: #b8ccd8;
+      font-size: 21px;
+      line-height: 1.34;
+    }
+
+    .benefit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      margin-top: 50px;
+    }
+
+    .benefit {
+      min-height: 330px;
+      padding: 34px 30px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(10, 25, 36, 0.82);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .benefit::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+    }
+
+    .benefit strong {
+      display: block;
+      color: var(--green);
+      font-size: 64px;
+      line-height: 1;
+      font-weight: 880;
+    }
+
+    .benefit h3 {
+      margin-top: 26px;
+      font-size: 32px;
+    }
+
+    .benefit p {
+      margin-top: 18px;
+      color: #b8ccd8;
+      font-size: 23px;
+      line-height: 1.42;
+    }
+
+    .guardrail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      margin-top: 52px;
+    }
+
+    .guardrail {
+      min-height: 420px;
+      padding: 38px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 189, 74, 0.28);
+      background: rgba(255, 189, 74, 0.08);
+    }
+
+    .guardrail b {
+      color: var(--amber);
+      font-size: 22px;
+      letter-spacing: 0.08em;
+    }
+
+    .guardrail h3 {
+      margin-top: 22px;
+      font-size: 40px;
+    }
+
+    .guardrail p {
+      margin-top: 22px;
+      color: #d7c9ad;
+      font-size: 27px;
+      line-height: 1.42;
+    }
+
+    .decision-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 26px;
+      margin-top: 58px;
+    }
+
+    .decision {
+      min-height: 360px;
+      padding: 38px;
+      border-radius: 8px;
+      border: 1px solid rgba(37, 212, 255, 0.24);
+      background:
+        linear-gradient(180deg, rgba(37, 212, 255, 0.10), transparent 52%),
+        rgba(10, 25, 36, 0.82);
+    }
+
+    .decision b {
+      color: var(--cyan);
+      font-size: 24px;
+      letter-spacing: 0.08em;
+    }
+
+    .decision strong {
+      display: block;
+      margin-top: 24px;
+      font-size: 44px;
+      line-height: 1.14;
+      font-weight: 840;
+    }
+
+    .decision p {
+      margin-top: 24px;
+      color: #bdd2dc;
+      font-size: 27px;
+      line-height: 1.42;
+    }
+
+    .boundary-table {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-top: 52px;
+    }
+
+    .boundary {
+      min-height: 560px;
+      padding: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(10, 25, 36, 0.82);
+    }
+
+    .boundary.in h3 {
+      color: var(--green);
+    }
+
+    .boundary.out h3 {
+      color: var(--amber);
+    }
+
+    .boundary h3 {
+      margin-bottom: 28px;
+      font-size: 44px;
+    }
+
+    .boundary li {
+      margin-bottom: 20px;
+      color: #c7dbe5;
+      font-size: 28px;
+      line-height: 1.36;
+    }
+
+    .delivery-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 34px;
+      margin-top: 48px;
+    }
+
+    .deliverables {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+
+    .deliverable {
+      min-height: 170px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(10, 25, 36, 0.82);
+    }
+
+    .deliverable b {
+      color: var(--cyan);
+      font-size: 20px;
+    }
+
+    .deliverable strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 29px;
+      line-height: 1.22;
+    }
+
+    .deliverable span {
+      display: block;
+      margin-top: 12px;
+      color: #b8ccd8;
+      font-size: 21px;
+      line-height: 1.34;
+    }
+
+    .support-list {
+      padding: 34px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 189, 74, 0.28);
+      background: rgba(255, 189, 74, 0.08);
+    }
+
+    .support-list h3 {
+      color: var(--amber);
+      font-size: 40px;
+      margin-bottom: 26px;
+    }
+
+    .support-list li {
+      margin-bottom: 18px;
+      color: #dac9aa;
+      font-size: 27px;
+      line-height: 1.36;
+    }
+
+    .risk-row {
+      display: grid;
+      grid-template-columns: 360px 1fr 1fr;
+      min-height: 118px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .risk-row:last-child {
+      border-bottom: 0;
+    }
+
+    .risk-row > div {
+      padding: 24px 28px;
+      font-size: 24px;
+      line-height: 1.34;
+      color: #c7dbe5;
+      border-right: 1px solid var(--line);
+    }
+
+    .risk-row > div:last-child {
+      border-right: 0;
+    }
+
+    .risk-row.header > div {
+      color: #071018;
+      background: var(--amber);
+      font-weight: 820;
+    }
+
+    .big-number {
+      font-size: 118px;
+      line-height: 1;
+      font-weight: 880;
+      color: rgba(37, 212, 255, 0.24);
+      position: absolute;
+      right: 40px;
+      bottom: 26px;
+    }
+
+    .quote {
+      margin-top: 58px;
+      max-width: 1350px;
+      font-size: 58px;
+      line-height: 1.26;
+      font-weight: 820;
+      color: #f4fbff;
+    }
+
+    .subquote {
+      max-width: 1080px;
+      margin-top: 32px;
+      color: #b8ccd8;
+      font-size: 31px;
+      line-height: 1.48;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      z-index: 1000;
+    }
+
+    .progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--amber));
+      transition: width 0.28s ease;
+    }
+
+    .deck-controls {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 1000;
+      padding: 10px 14px;
+      border-radius: 999px;
+      color: rgba(238, 247, 251, 0.78);
+      background: rgba(0, 0, 0, 0.38);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(26px);
+      transition: opacity 0.58s ease, transform 0.58s ease;
+    }
+
+    .visible .reveal,
+    .active .reveal {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .d1 { transition-delay: 0.06s; }
+    .d2 { transition-delay: 0.12s; }
+    .d3 { transition-delay: 0.18s; }
+    .d4 { transition-delay: 0.24s; }
+    .d5 { transition-delay: 0.30s; }
+
+    @media print {
+      html, body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+      }
+
+      .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+      }
+
+      .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+      }
+
+      .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+      }
+
+      .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+
+      .deck-controls,
+      .progress {
+        display: none !important;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck-viewport" aria-live="polite">
+    <section class="deck-stage">
+      <article class="slide active visible">
+        <div class="slide-inner">
+          <div class="kicker reveal">AI ALARM COPILOT</div>
+          <h1 class="reveal d1">两客一危智能监管平台<br><span class="cyan">AI 报警处置助手</span></h1>
+          <p class="lead reveal d2">基于省平台既有能力，聚焦报警出现后的标准化处置、证据留痕、企业通知和管理闭环。</p>
+          <div class="cover-metrics reveal d3">
+            <div class="metric"><strong>不是</strong><span>重建监管平台</span></div>
+            <div class="metric"><strong>不是</strong><span>重做报警识别</span></div>
+            <div class="metric"><strong>重点</strong><span>报警后闭环自动化</span></div>
+            <div class="metric"><strong>结果</strong><span>可倒查、可统计、可导出</span></div>
+          </div>
+          <div class="footer-note">客户汇报版 · HTML 单文件幻灯片</div>
+          <div class="page-no">01 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">POSITIONING</div>
+          <h2 class="reveal d1">项目定位：省平台能力之上的处置助手</h2>
+          <div class="two-col">
+            <div class="panel reveal d2">
+              <h3>省平台已经具备的能力</h3>
+              <p>实时报警、报警详情、视频查看、文本下发、语音对讲、证据导出、申诉处理、报警查询、车辆巡检。</p>
+            </div>
+            <div class="panel reveal d3">
+              <h3>本项目补齐的环节</h3>
+              <p>报警弹出之后，辅助监控人员更快完成判断、处置、通知、留痕、统计和升级。</p>
+            </div>
+          </div>
+          <div class="statement reveal d4">系统定位为：基于省平台现有能力的 AI 报警处置助手。</div>
+          <div class="page-no">02 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">PAIN POINTS</div>
+          <h2 class="reveal d1">业务痛点：不是没有报警，而是处置压力过高</h2>
+          <div class="three-col">
+            <div class="panel reveal d2">
+              <h3>值守压力</h3>
+              <ul>
+                <li>24 小时盯屏强度高</li>
+                <li>夜间疲劳、漏处理风险高</li>
+                <li>短时间干预压力大</li>
+              </ul>
+            </div>
+            <div class="panel reveal d3">
+              <h3>操作重复</h3>
+              <ul>
+                <li>文本下发重复</li>
+                <li>语音对讲重复</li>
+                <li>截图、台账整理耗时</li>
+              </ul>
+            </div>
+            <div class="panel reveal d4">
+              <h3>责任倒查</h3>
+              <ul>
+                <li>处置记录分散</li>
+                <li>企业通知证明不足</li>
+                <li>考核督导说明成本高</li>
+              </ul>
+            </div>
+          </div>
+          <div class="page-no">03 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">AI VALUE</div>
+          <h2 class="reveal d1">AI 价值：报警后的处置闭环自动化</h2>
+          <p class="quote reveal d2">用 AI 和自动化，把高压、高频、强责任的车辆报警处置流程，转为标准化、可留痕、可升级、可统计的管理闭环。</p>
+          <p class="subquote reveal d3">对客户而言，价值不是“AI 看起来先进”，而是让每一次报警都有响应、有证据、有通知、有责任链。</p>
+          <div class="page-no">04 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">DECISION SUMMARY</div>
+          <h2 class="reveal d1">给客户决策层的三句话</h2>
+          <div class="decision-strip">
+            <div class="decision reveal d2">
+              <b>WHY NOW</b>
+              <strong>先解决值守压力和责任留痕</strong>
+              <p>报警识别已经存在，最容易形成价值的是报警后的快速响应、标准处置和证据链闭环。</p>
+            </div>
+            <div class="decision reveal d3">
+              <b>WHY AI</b>
+              <strong>让人从重复操作里释放出来</strong>
+              <p>AI 不替代最终责任，而是把读报警、匹配话术、辅判截图、生成台账这些高频动作自动化。</p>
+            </div>
+            <div class="decision reveal d4">
+              <b>WHY PHASE 1</b>
+              <strong>四周先跑通可验收闭环</strong>
+              <p>第一阶段聚焦少量高频高风险报警，用真实样本证明时效、留痕和升级能力。</p>
+            </div>
+          </div>
+          <div class="statement reveal d5">一句话：不是做一个“炫技 AI”，而是做一个能帮监控中心少漏、少慢、少扯皮的处置助手。</div>
+          <div class="page-no">05 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">SCENARIO</div>
+          <h2 class="reveal d1">典型场景：一条疲劳驾驶报警如何形成闭环</h2>
+          <div class="scenario-board">
+            <div class="scenario-screen reveal d2">
+              <div class="screen-top"><span>省平台实时报警</span><span>02:17:43</span></div>
+              <div class="alarm-card">
+                <strong>疲劳驾驶 · 高风险</strong>
+                <span>演示车辆-01 · 示例运输企业 · 驾驶员张某 · 已持续 92 秒</span>
+              </div>
+              <div class="screen-grid">
+                <div class="screen-tile">AI 辅判：疑似闭眼 / 低头，置信度 82%</div>
+                <div class="screen-tile">规则匹配：夜间高风险，需语音提醒 + 留痕</div>
+                <div class="screen-tile">处置动作：标准语音对讲，文本同步下发</div>
+                <div class="screen-tile">证据链：截图、视频帧、速度曲线、操作记录</div>
+              </div>
+            </div>
+            <div class="scenario-steps">
+              <div class="scenario-step reveal d3"><b>1</b><div><strong>自动读取报警详情</strong><span>采集报警类型、车牌、企业、驾驶员、时间和持续状态。</span></div></div>
+              <div class="scenario-step reveal d3"><b>2</b><div><strong>匹配处置 SOP</strong><span>根据报警等级、时间段和企业规则，确定处置动作。</span></div></div>
+              <div class="scenario-step reveal d4"><b>3</b><div><strong>执行提醒并留痕</strong><span>触发文本/语音提醒，同步保存截图和处理记录。</span></div></div>
+              <div class="scenario-step reveal d4"><b>4</b><div><strong>未纠正即升级</strong><span>持续报警或驾驶员未回应时，通知企业紧急联系人。</span></div></div>
+              <div class="scenario-step reveal d5"><b>5</b><div><strong>生成台账报表</strong><span>形成可查询、可导出、可用于责任说明的闭环记录。</span></div></div>
+            </div>
+          </div>
+          <div class="page-no">06 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">TECH ROUTE</div>
+          <h2 class="reveal d1">技术路线：本地客户端 + 页面自动化 + 规则引擎 + AI 判断</h2>
+          <div class="flow reveal d2">
+            <div class="flow-step"><b>01</b><strong>报警监听</strong><span>监听弹窗、列表、详情区域。</span></div>
+            <div class="flow-step"><b>02</b><strong>信息采集</strong><span>读取车牌、企业、驾驶员、时间、报警类型。</span></div>
+            <div class="flow-step"><b>03</b><strong>规则匹配</strong><span>匹配官方规则和企业 SOP。</span></div>
+            <div class="flow-step"><b>04</b><strong>AI 辅判</strong><span>截图、视频帧、设备状态辅助分类。</span></div>
+            <div class="flow-step"><b>05</b><strong>处置触发</strong><span>文本、语音、电话寻呼、人工接管。</span></div>
+            <div class="flow-step"><b>06</b><strong>台账留痕</strong><span>证据、记录、报表、导出。</span></div>
+          </div>
+          <div class="page-no">07 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">ARCHITECTURE</div>
+          <h2 class="reveal d1">系统结构：围绕处置动作形成闭环</h2>
+          <div class="four-col">
+            <div class="panel reveal d2">
+              <h3>采集层</h3>
+              <p>页面监听、详情读取、截图抓取、视频帧采集。</p>
+            </div>
+            <div class="panel reveal d3">
+              <h3>决策层</h3>
+              <p>规则引擎、SOP 匹配、AI 辅助判断、置信度评估。</p>
+            </div>
+            <div class="panel reveal d4">
+              <h3>执行层</h3>
+              <p>文本下发、语音对讲、电话寻呼、人工接管提醒。</p>
+            </div>
+            <div class="panel reveal d5">
+              <h3>管理层</h3>
+              <p>台账、日报周报月报、管理看板、数据导出。</p>
+            </div>
+          </div>
+          <div class="page-no">08 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">MODULES</div>
+          <h2 class="reveal d1">核心模块：从报警采集到处置升级</h2>
+          <div class="module-grid">
+            <div class="module reveal d2"><b>01</b><strong>报警监听与信息采集</strong><span>实时监听报警弹窗、列表、详情，采集结构化字段。</span></div>
+            <div class="module reveal d2"><b>02</b><strong>报警规则引擎</strong><span>将官方规则和企业 SOP 转化为可执行规则库。</span></div>
+            <div class="module reveal d3"><b>03</b><strong>文本下发</strong><span>按报警类型生成标准提醒文本，第一阶段采用审核模板。</span></div>
+            <div class="module reveal d3"><b>04</b><strong>语音对讲</strong><span>识别需语音干预的报警，播放固定话术或合成语音。</span></div>
+            <div class="module reveal d4"><b>05</b><strong>AI 视频与截图辅判</strong><span>辅助判断疲劳、分心、遮挡、偏移等状态。</span></div>
+            <div class="module reveal d4"><b>06</b><strong>正误报辅助判断</strong><span>规则型报警按规则判定，视觉型报警由 AI 辅判。</span></div>
+          </div>
+          <div class="page-no">09 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">MODULES</div>
+          <h2 class="reveal d1">核心模块：通知、台账与巡检</h2>
+          <div class="three-col">
+            <div class="panel reveal d2">
+              <h3>企业通知与升级</h3>
+              <p>驾驶员未回应、高风险报警、连续报警时，自动生成企业通知内容，辅助电话、短信或企业微信通知。</p>
+            </div>
+            <div class="panel reveal d3">
+              <h3>台账与报表生成</h3>
+              <p>自动生成处置台账，汇总截图、视频帧、速度曲线、处理记录，支持日报、周报、月报。</p>
+            </div>
+            <div class="panel reveal d4">
+              <h3>车辆巡检辅助</h3>
+              <p>自动巡检在线状态、摄像头画面、设备异常，形成异常车辆清单。</p>
+            </div>
+          </div>
+          <div class="page-no">10 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">PHASE 1</div>
+          <h2 class="reveal d1">第一阶段：优先建设四个处置闭环</h2>
+          <div class="four-col">
+            <div class="panel reveal d2">
+              <span class="big-number">1</span>
+              <h3>AI 自动辅助处置</h3>
+              <p>自动读取报警，匹配标准话术，辅助文本或语音提醒，并抓取证据。</p>
+            </div>
+            <div class="panel reveal d3">
+              <span class="big-number">2</span>
+              <h3>电话寻呼闭环</h3>
+              <p>驾驶员未回应、报警持续、高风险时，辅助通知企业紧急联系人。</p>
+            </div>
+            <div class="panel reveal d4">
+              <span class="big-number">3</span>
+              <h3>移动端查看与接手</h3>
+              <p>负责人在手机查看报警状态、详情、记录，并远程接手或备注。</p>
+            </div>
+            <div class="panel reveal d5">
+              <span class="big-number">4</span>
+              <h3>管理看板与导出</h3>
+              <p>统计报警、处置、超时、电话通知、重点车辆和重点企业。</p>
+            </div>
+          </div>
+          <div class="page-no">11 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">PHASE 1 BOUNDARY</div>
+          <h2 class="reveal d1">第一阶段边界：先做可控闭环，不承诺一步全自动</h2>
+          <div class="boundary-table">
+            <div class="boundary in reveal d2">
+              <h3>第一阶段做什么</h3>
+              <ul>
+                <li>监听实时报警并读取报警详情</li>
+                <li>覆盖重点报警类型的标准处置话术</li>
+                <li>辅助文本下发、语音提醒、电话寻呼</li>
+                <li>自动保存截图、视频帧、处置记录</li>
+                <li>生成处置台账和基础统计报表</li>
+                <li>低置信度和高风险报警提醒人工接管</li>
+              </ul>
+            </div>
+            <div class="boundary out reveal d3">
+              <h3>第一阶段不承诺什么</h3>
+              <ul>
+                <li>不替代省平台原有报警识别能力</li>
+                <li>不承诺所有报警类型一次性全覆盖</li>
+                <li>不让 AI 对高风险事件自动最终定责</li>
+                <li>不绕过平台权限、安全策略和人工审核</li>
+                <li>不在未授权前直接接入短信、企微等外部通道</li>
+                <li>不以演示效果替代真实试运行数据</li>
+              </ul>
+            </div>
+          </div>
+          <div class="page-no">12 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">ESCALATION</div>
+          <h2 class="reveal d1">升级策略：AI 能处理先处理，处理不了马上升级</h2>
+          <div class="two-col">
+            <div class="panel reveal d2">
+              <h3>自动升级触发条件</h3>
+              <ul>
+                <li>驾驶员未回应或提醒后未纠正</li>
+                <li>报警持续存在或连续多次报警</li>
+                <li>疑似事故、夜间高风险报警</li>
+                <li>设备异常、低置信度、AI 无法判断</li>
+              </ul>
+            </div>
+            <div class="panel reveal d3">
+              <h3>升级后的客户价值</h3>
+              <ul>
+                <li>证明企业负责人已被及时通知</li>
+                <li>减少人工漏通知和口径不一致</li>
+                <li>为检查、倒查、责任说明留证据</li>
+                <li>高风险报警保留人工最终决策权</li>
+              </ul>
+            </div>
+          </div>
+          <div class="page-no">13 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">HUMAN IN LOOP</div>
+          <h2 class="reveal d1">人工兜底：AI 只做辅助建议，高风险必须可接管</h2>
+          <div class="guardrail-grid">
+            <div class="guardrail reveal d2">
+              <b>BOUNDARY 01</b>
+              <h3>低置信度不自动定性</h3>
+              <p>AI 无法明确判断、画面遮挡、视频质量差时，只给出“需人工确认”建议，不直接生成最终结论。</p>
+            </div>
+            <div class="guardrail reveal d3">
+              <b>BOUNDARY 02</b>
+              <h3>高风险不绕过人工</h3>
+              <p>疑似事故、连续报警、夜间高风险、驾驶员无响应等场景，必须提醒人工接管并记录接管过程。</p>
+            </div>
+            <div class="guardrail reveal d4">
+              <b>BOUNDARY 03</b>
+              <h3>责任链必须可追溯</h3>
+              <p>保留 AI 建议、人工确认、处置动作、企业通知和证据材料，避免“系统自动处理但无法说明”。</p>
+            </div>
+          </div>
+          <div class="statement reveal d5">对客户的承诺不是“AI 替人负责”，而是“AI 帮人更快、更稳、更有证据地处置”。</div>
+          <div class="page-no">14 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">EXPECTED IMPACT</div>
+          <h2 class="reveal d1">量化收益：第一阶段建议用这些指标验收</h2>
+          <div class="benefit-grid">
+            <div class="benefit reveal d2">
+              <strong>30s</strong>
+              <h3>首响时效</h3>
+              <p>报警出现后 30 秒内完成读取、规则匹配和提醒动作触发。</p>
+            </div>
+            <div class="benefit reveal d3">
+              <strong>80%</strong>
+              <h3>重复操作减少</h3>
+              <p>文本提醒、截图留痕、台账登记等重复动作由系统自动辅助完成。</p>
+            </div>
+            <div class="benefit reveal d4">
+              <strong>100%</strong>
+              <h3>关键报警留痕</h3>
+              <p>重点报警保留截图、视频帧、处置记录和通知记录。</p>
+            </div>
+            <div class="benefit reveal d5">
+              <strong>T+1</strong>
+              <h3>报表输出</h3>
+              <p>支持日报、周报、月报导出，减少人工汇总和倒查成本。</p>
+            </div>
+          </div>
+          <p class="subquote reveal d5">以上是第一阶段建议目标值，最终应以试运行样本和客户考核口径校准。</p>
+          <div class="page-no">15 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">ROADMAP</div>
+          <h2 class="reveal d1">分阶段实施：先闭环，再优化，再扩展</h2>
+          <div class="timeline">
+            <div class="phase reveal d2">
+              <span class="tag">第一阶段 · 4 周</span>
+              <h3>核心闭环落地</h3>
+              <p>报警实时处置、台账自动生成、重点报警 AI 辅助判断，完成四个第一阶段闭环。</p>
+            </div>
+            <div class="phase reveal d3">
+              <span class="tag">第二阶段 · 2-4 周</span>
+              <h3>试运行优化</h3>
+              <p>收集真实样本，优化页面稳定性、规则准确率、误报判断和处置话术。</p>
+            </div>
+            <div class="phase reveal d4">
+              <span class="tag">第三阶段</span>
+              <h3>能力扩展</h3>
+              <p>扩展报警类型、自动巡检、短信/企业微信接入、风险分析看板。</p>
+            </div>
+          </div>
+          <div class="page-no">16 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">DELIVERY PLAN</div>
+          <h2 class="reveal d1">交付物与客户配合：把试运行条件提前说清楚</h2>
+          <div class="delivery-grid">
+            <div class="deliverables">
+              <div class="deliverable reveal d2"><b>01</b><strong>本地客户端原型</strong><span>完成报警监听、详情读取、处置动作辅助和留痕。</span></div>
+              <div class="deliverable reveal d2"><b>02</b><strong>规则与话术模板库</strong><span>沉淀重点报警规则、处置 SOP、文本和语音话术。</span></div>
+              <div class="deliverable reveal d3"><b>03</b><strong>台账与报表模板</strong><span>输出日报、周报、月报和可倒查的处置明细。</span></div>
+              <div class="deliverable reveal d3"><b>04</b><strong>移动端查看页面</strong><span>展示报警状态、详情、通知记录和人工接手入口。</span></div>
+              <div class="deliverable reveal d4"><b>05</b><strong>试运行记录</strong><span>用真实样本统计响应时效、处置成功率和异常原因。</span></div>
+              <div class="deliverable reveal d4"><b>06</b><strong>验收报告</strong><span>按验收标准整理功能、数据、问题和下一阶段建议。</span></div>
+            </div>
+            <div class="support-list reveal d5">
+              <h3>需要客户配合</h3>
+              <ul>
+                <li>提供省平台测试账号与必要权限</li>
+                <li>明确第一阶段重点报警类型</li>
+                <li>确认企业处置 SOP 和话术口径</li>
+                <li>提供试运行车辆、企业、联系人样本</li>
+                <li>确认数据留存、导出和安全合规要求</li>
+                <li>安排业务人员参与试运行复盘</li>
+              </ul>
+            </div>
+          </div>
+          <div class="page-no">17 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">ACCEPTANCE</div>
+          <h2 class="reveal d1">验收标准：以“可运行闭环”验收，不以概念演示验收</h2>
+          <div class="checklist reveal d2">
+            <div class="check">识别省平台实时报警</div>
+            <div class="check">自动读取报警详情</div>
+            <div class="check">匹配报警规则和企业 SOP</div>
+            <div class="check">自动生成文本提醒</div>
+            <div class="check">自动触发语音提醒</div>
+            <div class="check">保存报警截图和处置记录</div>
+            <div class="check">生成报警处置台账</div>
+            <div class="check">输出正误报辅助判断建议</div>
+            <div class="check">记录企业通知内容</div>
+            <div class="check">低置信度、高风险报警提醒人工接管</div>
+          </div>
+          <div class="page-no">18 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">ASSUMPTIONS & RISKS</div>
+          <h2 class="reveal d1">客户视角重审：当前方案预设了这些前提</h2>
+          <div class="risk-table reveal d2">
+            <div class="risk-row header"><div>预设假设</div><div>客户会追问什么</div><div>建议补强</div></div>
+            <div class="risk-row"><div>通过页面自动化稳定读取省平台</div><div>页面改版、验证码、权限、弹窗变化怎么办？</div><div>明确适配边界，增加监控、失败重试、人工兜底和版本巡检机制。</div></div>
+            <div class="risk-row"><div>固定话术能覆盖第一阶段</div><div>不同企业、不同报警等级是否需要差异化？</div><div>建立话术模板库和审批流程，先固定模板，后参数化配置。</div></div>
+            <div class="risk-row"><div>AI 辅判能提升效率</div><div>误判责任谁承担？能否追溯？</div><div>定位为“辅助建议”，高风险和低置信度必须人工确认，保留证据链。</div></div>
+            <div class="risk-row"><div>电话/短信/企微可接入</div><div>谁授权？费用谁承担？通知失败怎么证明？</div><div>第一阶段先电话寻呼和通知记录闭环，后续再接入消息通道。</div></div>
+          </div>
+          <div class="page-no">19 / 20</div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <div class="slide-inner">
+          <div class="kicker reveal">CONCLUSION</div>
+          <h2 class="reveal d1">结论：把报警处置从“人工盯屏”推进到“闭环运营”</h2>
+          <div class="statement reveal d2">第一阶段不要追求全自动替代人，而是先把高频重复处置、证据留痕、企业通知和管理报表做扎实。</div>
+          <div class="three-col">
+            <div class="panel reveal d3"><h3>先可用</h3><p>围绕真实报警跑通核心流程。</p></div>
+            <div class="panel reveal d4"><h3>再可信</h3><p>用记录、截图、通知链条证明处置过程。</p></div>
+            <div class="panel reveal d5"><h3>后智能</h3><p>逐步扩展 AI 判断和风险分析能力。</p></div>
+          </div>
+          <div class="footer-note">建议下一步：用 20 条真实报警样本做端到端试运行验收。</div>
+          <div class="page-no">20 / 20</div>
+        </div>
+      </article>
+    </section>
+  </main>
+  <div class="deck-controls">← → / 空格翻页 · 滚轮切换</div>
+  <div class="progress"><span id="progressBar"></span></div>
+  <script>
+    (function () {
+      const stage = document.querySelector(".deck-stage");
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const progress = document.getElementById("progressBar");
+      let index = 0;
+      let wheelLocked = false;
+      let touchStartX = 0;
+      let touchStartY = 0;
+
+      function fitStage() {
+        const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+        const left = (window.innerWidth - 1920 * scale) / 2;
+        const top = (window.innerHeight - 1080 * scale) / 2;
+        stage.style.transform = `translate(${left}px, ${top}px) scale(${scale})`;
+      }
+
+      function show(next) {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        slides.forEach((slide, i) => {
+          slide.classList.toggle("active", i === index);
+          slide.classList.toggle("visible", i === index);
+        });
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+      }
+
+      function next() { show(index + 1); }
+      function prev() { show(index - 1); }
+
+      window.addEventListener("resize", fitStage);
+      document.addEventListener("keydown", (event) => {
+        if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+          event.preventDefault();
+          next();
+        }
+        if (["ArrowLeft", "PageUp"].includes(event.key)) {
+          event.preventDefault();
+          prev();
+        }
+        if (event.key === "Home") show(0);
+        if (event.key === "End") show(slides.length - 1);
+      });
+
+      document.addEventListener("wheel", (event) => {
+        if (wheelLocked) return;
+        if (Math.abs(event.deltaY) < 20) return;
+        wheelLocked = true;
+        event.deltaY > 0 ? next() : prev();
+        window.setTimeout(() => { wheelLocked = false; }, 420);
+      }, { passive: true });
+
+      document.addEventListener("touchstart", (event) => {
+        const touch = event.changedTouches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+      }, { passive: true });
+
+      document.addEventListener("touchend", (event) => {
+        const touch = event.changedTouches[0];
+        const dx = touch.clientX - touchStartX;
+        const dy = touch.clientY - touchStartY;
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) {
+          dx < 0 ? next() : prev();
+        }
+      }, { passive: true });
+
+      fitStage();
+      show(0);
+    })();
+  </script>
+</body>
+</html>
