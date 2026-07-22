@@ -302,7 +302,12 @@ def home(request):
 def event_upsert_api(request):
     data = payload(request)
     fact, created = services.upsert_alarm_fact(actor=request.user, event=data.get("event"), decision=data.get("decision"), action=data.get("action"), source=data.get("source"))
-    return JsonResponse({"ok": True, "created": created, "data": {"eventId": fact.event_id, "updatedAt": fact.updated_at.isoformat()}}, status=201 if created else 200)
+    return JsonResponse({"ok": True, "created": created, "data": {
+        "eventId": fact.event_id, "processingStatus": fact.processing_status,
+        "processingSource": fact.processing_source or None,
+        "processingMarkedAt": fact.processing_marked_at.isoformat() if fact.processing_marked_at else None,
+        "updatedAt": fact.updated_at.isoformat(),
+    }}, status=201 if created else 200)
 
 
 @require_http_methods(["POST"])

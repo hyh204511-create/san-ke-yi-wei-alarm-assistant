@@ -1452,7 +1452,7 @@ async function syncAlarmFact(event, decision, action, identity) {
     // 浏览器范围判断仅用于界面展示和真实动作闸门，不能替代服务器裁决。
     const state = await getState();
     const captureId = event.sourceCaptures?.at?.(-1) || event.eventId;
-    await assistantMutation("/reports/api/events/upsert", {
+    const response = await assistantMutation("/reports/api/events/upsert", {
       event, decision, action,
       source: {
         captureId, deviceId: await getDeviceId(), platformAccountRef: identity.activeShift?.platformAccountRef || "",
@@ -1460,6 +1460,13 @@ async function syncAlarmFact(event, decision, action, identity) {
         capturedAt: event.updatedAt || event.discoveredAt || new Date().toISOString(),
       }
     }, identity);
+    if (response?.data?.processingStatus) {
+      await chrome.storage.local.set({ [`processing:${event.eventId}`]: {
+        status: response.data.processingStatus,
+        source: response.data.processingSource || null,
+        markedAt: response.data.processingMarkedAt || null,
+      } });
+    }
     await chrome.storage.local.remove(`reporting-error:${event.eventId}`);
   } catch (error) {
     await chrome.storage.local.set({ [`reporting-error:${event.eventId}`]: String(error?.message || error) });
@@ -1478,9 +1485,9 @@ async function recentEvents(identity, limit = 100) {
   if (!identity?.authenticated || !(identity.permissions || []).includes("alarm.view")) return [];
   const state = await getState();
   const ids = state.eventIds.slice(0, limit);
-  const keys = ids.flatMap((id) => [`event:${id}`, `decision:${id}`, `action:${id}`, `disposal:${id}`, `disposal-error:${id}`]);
+  const keys = ids.flatMap((id) => [`event:${id}`, `decision:${id}`, `action:${id}`, `processing:${id}`, `disposal:${id}`, `disposal-error:${id}`]);
   const stored = await chrome.storage.local.get(keys);
-  return ids.map((id) => ({ event: stored[`event:${id}`], decision: stored[`decision:${id}`] || null, action: stored[`action:${id}`] || null, disposal: stored[`disposal:${id}`] || null, disposalSyncError: stored[`disposal-error:${id}`] || null }))
+  return ids.map((id) => ({ event: stored[`event:${id}`], decision: stored[`decision:${id}`] || null, action: stored[`action:${id}`] || null, processing: stored[`processing:${id}`] || null, disposal: stored[`disposal:${id}`] || null, disposalSyncError: stored[`disposal-error:${id}`] || null }))
     .filter((item) => item.event && enterpriseAccessForEvent(item.event, identity.enterpriseScopes || []).status === "ALLOWED");
 }
 

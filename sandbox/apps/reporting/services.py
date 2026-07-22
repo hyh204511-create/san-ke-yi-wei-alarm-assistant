@@ -164,6 +164,33 @@ def capture_defaults(capture, actor):
     return {key: value for key, value in capture.items() if key not in {"device_id", "capture_id"}} | {"ingested_by": actor}
 
 
+def action_processing_values(action):
+    if not isinstance(action, dict):
+        return {}
+    status = str(action.get("processingStatus") or action.get("status") or "").upper()
+    mapped = {
+        "PLANNED": AlarmFact.ProcessingStatus.UNPROCESSED,
+        "EXECUTING": AlarmFact.ProcessingStatus.EXECUTING,
+        "PROCESSED": AlarmFact.ProcessingStatus.PROCESSED,
+        "PROCESSED_WITH_FALLBACK": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "SUCCEEDED": AlarmFact.ProcessingStatus.PROCESSED,
+        "FAILED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "BLOCKED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "MANUAL_REQUIRED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "UNKNOWN": AlarmFact.ProcessingStatus.UNKNOWN,
+    }.get(status)
+    if status == "SUCCEEDED" and str(action.get("type") or "").upper() == "VOICE_INTERCOM":
+        mapped = AlarmFact.ProcessingStatus.MANUAL_REQUIRED
+    if not mapped:
+        return {}
+    marked_at = parse_platform_datetime(action.get("finishedAt") or action.get("updatedAt"))
+    return {
+        "processing_status": mapped,
+        "processing_source": "PLUGIN_RESPONSE_PLAN",
+        "processing_marked_at": marked_at if mapped != AlarmFact.ProcessingStatus.UNPROCESSED else None,
+    }
+
+
 @transaction.atomic
 def upsert_alarm_fact(*, actor, event, decision, action, source=None):
     require_reporting_permission(actor, "alarm.view", require_shift=True)
@@ -198,6 +225,14 @@ def upsert_alarm_fact(*, actor, event, decision, action, source=None):
         "completion_reason": str(completion.get("reason") or "")[:500],
         "action_snapshot": action if isinstance(action, dict) else {}, "last_seen_at": seen_at,
     }
+    processing_values = action_processing_values(action)
+    if fact and fact.processing_source.startswith("SERVER_") and fact.processing_status in {
+        AlarmFact.ProcessingStatus.PROCESSED, AlarmFact.ProcessingStatus.UNKNOWN,
+    }:
+        processing_values = {}
+    values.update(processing_values)
+    if fact and not action:
+        values["action_snapshot"] = fact.action_snapshot
     if fact:
         values["ingestion_provenance"] = merge_ingestion_provenance(fact.ingestion_provenance, actor, seen_at)
         changed = any(getattr(fact, key) != value for key, value in values.items())
@@ -248,20 +283,35 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
     if action_type not in {"TEXT_TTS", "VOICE_INTERCOM", "RESPONSE_PLAN"}:
         raise ReportingError("动作类型必须是TEXT_TTS、VOICE_INTERCOM或RESPONSE_PLAN", "INVALID_ACTION_TYPE", 422)
     now = timezone.now()
+    if fact.processing_status == AlarmFact.ProcessingStatus.PROCESSED:
+        raise ReportingError("该报警已经完成自动处置，禁止重复下发", "ACTION_ALREADY_COMPLETED", 409)
+    if fact.processing_status == AlarmFact.ProcessingStatus.UNKNOWN:
+        raise ReportingError("该报警存在结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
     active_statuses = [ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING]
-    ActionLease.objects.filter(fact=fact, status__in=active_statuses, expires_at__lte=now).update(status=ActionLease.Status.EXPIRED, finished_at=now)
+    if ActionLease.objects.filter(fact=fact, status__in=active_statuses, expires_at__lte=now).exists():
+        # The periodic expiry command persists UNKNOWN and creates the duty notification.
+        # Until it runs, fail closed instead of issuing a second action lease.
+        raise ReportingError("该报警存在已超时且结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
     if ActionLease.objects.filter(fact=fact, status__in=active_statuses).exists():
         raise ReportingError("该报警已有设备取得处置计划租约", "ACTION_LEASE_CONFLICT", 409)
     if ActionLease.objects.filter(fact=fact, action_type="RESPONSE_PLAN", status=ActionLease.Status.COMPLETED).exists():
         raise ReportingError("该报警已经完成自动处置，禁止重复下发", "ACTION_ALREADY_COMPLETED", 409)
     if ActionLease.objects.filter(fact=fact, status=ActionLease.Status.UNKNOWN).exists():
         raise ReportingError("该报警存在结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
+    if fact.processing_source.startswith("SERVER_") and fact.processing_status in {
+        AlarmFact.ProcessingStatus.EXECUTING, AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+    }:
+        raise ReportingError("该报警已有执行或人工接管记录，禁止自动重复下发", "ACTION_MANUAL_REVIEW_REQUIRED", 409)
     raw_token = secrets.token_urlsafe(32)
     lease = ActionLease.objects.create(
         fact=fact, actor=actor, device_id=str(device_id)[:120], action_type=str(action_type)[:60],
         lease_token_hash=_lease_token_hash(raw_token),
         expires_at=now + timedelta(seconds=max(30, min(int(duration_seconds), 600))),
     )
+    fact.processing_status = AlarmFact.ProcessingStatus.EXECUTING
+    fact.processing_source = "SERVER_ACTION_LEASE"
+    fact.processing_marked_at = now
+    fact.save(update_fields=["processing_status", "processing_source", "processing_marked_at", "updated_at"])
     # The raw token is returned once to the caller and is never persisted or logged.
     lease._plain_token = raw_token
     return lease
@@ -440,7 +490,17 @@ def record_action_result(*, actor, payload):
         "resultCode": result_code, "result": result_payload, "recordedAt": now.isoformat(),
     }
     fact.action_snapshot = action_snapshot
-    fact.save(update_fields=["action_snapshot", "updated_at"])
+    fact.processing_status = {
+        "EXECUTING": AlarmFact.ProcessingStatus.EXECUTING,
+        "SUCCEEDED": AlarmFact.ProcessingStatus.PROCESSED if lease.action_type in {"RESPONSE_PLAN", "TEXT_TTS"} else AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "FAILED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "BLOCKED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "MANUAL_REQUIRED": AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
+        "UNKNOWN": AlarmFact.ProcessingStatus.UNKNOWN,
+    }[result_code]
+    fact.processing_source = "SERVER_ACTION_RESULT"
+    fact.processing_marked_at = now
+    fact.save(update_fields=["action_snapshot", "processing_status", "processing_source", "processing_marked_at", "updated_at"])
     audit(actor, "ACTION_RESULT_RECORDED", "ACTION_LEASE", lease.public_id, {"resultCode": result_code, "actionType": lease.action_type})
     notification = ensure_action_notification(
         actor=actor, fact=lease.fact, result_code=result_code, action_type=lease.action_type,

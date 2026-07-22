@@ -248,6 +248,117 @@ class ReportingFlowTests(TestCase):
             )
         self.assertEqual(unknown.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
 
+    def test_processing_status_tracks_plan_result_and_survives_empty_refresh(self):
+        self.client.force_login(self.monitor)
+        event = event_payload("alarm:id:9000000000000000088", alarm_name="超速驾驶")
+        created = self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": event, "decision": decision_payload(), "action": {}}, action_token=True,
+        )
+        self.assertEqual(created.status_code, 201)
+        fact = AlarmFact.objects.get(event_id=event["eventId"])
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNPROCESSED)
+
+        lease = services.acquire_action_lease(
+            actor=self.monitor, fact=fact, device_id="processing-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+        )
+        fact.refresh_from_db()
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.EXECUTING)
+        services.record_action_result(actor=self.monitor, payload={
+            "leaseId": str(lease.public_id), "leaseToken": lease._plain_token,
+            "deviceId": "processing-device", "resultCode": "SUCCEEDED",
+            "actionId": "processing-plan", "result": {"processingStatus": "PROCESSED"},
+        })
+        fact.refresh_from_db()
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.PROCESSED)
+        self.assertEqual(fact.processing_source, "SERVER_ACTION_RESULT")
+        self.assertIsNotNone(fact.processing_marked_at)
+
+        stale_action = {"actionId": "stale-plan", "type": "RESPONSE_PLAN", "status": "EXECUTING", "processingStatus": "EXECUTING"}
+        refreshed = self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": event, "decision": decision_payload(), "action": stale_action}, action_token=True,
+        )
+        self.assertEqual(refreshed.status_code, 200)
+        fact.refresh_from_db()
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.PROCESSED)
+        ActionLease.objects.filter(fact=fact).delete()
+        with self.assertRaises(services.ReportingError) as replay:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="processing-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(replay.exception.code, "ACTION_ALREADY_COMPLETED")
+
+    def test_unknown_plan_result_is_explicit_and_blocks_cross_account_replay(self):
+        self.client.force_login(self.monitor)
+        event = event_payload("alarm:id:9000000000000000089", alarm_name="超速驾驶")
+        self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": event, "decision": decision_payload(), "action": {}}, action_token=True,
+        )
+        fact = AlarmFact.objects.get(event_id=event["eventId"])
+        lease = services.acquire_action_lease(
+            actor=self.monitor, fact=fact, device_id="unknown-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+        )
+        services.record_action_result(actor=self.monitor, payload={
+            "leaseId": str(lease.public_id), "leaseToken": lease._plain_token,
+            "deviceId": "unknown-device", "resultCode": "UNKNOWN",
+            "actionId": "unknown-plan", "result": {"errorCode": "PLATFORM_REQUEST_TIMEOUT"},
+        })
+        fact.refresh_from_db()
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNKNOWN)
+        DutyNotification.objects.filter(action_lease=lease).delete()
+        fact.action_leases.all().delete()
+        with self.assertRaises(services.ReportingError) as caught:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(caught.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
+
+    def test_expired_or_manual_action_state_fails_closed_before_new_lease(self):
+        self.client.force_login(self.monitor)
+        event = event_payload("alarm:id:9000000000000000090", alarm_name="超速驾驶")
+        self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": event, "decision": decision_payload(), "action": {}}, action_token=True,
+        )
+        fact = AlarmFact.objects.get(event_id=event["eventId"])
+        lease = services.acquire_action_lease(
+            actor=self.monitor, fact=fact, device_id="expired-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+        )
+        lease.expires_at = timezone.now() - timedelta(seconds=1)
+        lease.save(update_fields=["expires_at", "updated_at"])
+        with self.assertRaises(services.ReportingError) as expired:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(expired.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
+
+        call_command("expire_action_leases", verbosity=0)
+        fact.refresh_from_db()
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNKNOWN)
+
+        manual_event = event_payload("alarm:id:9000000000000000091", alarm_name="超速驾驶")
+        self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": manual_event, "decision": decision_payload(), "action": {}}, action_token=True,
+        )
+        manual_fact = AlarmFact.objects.get(event_id=manual_event["eventId"])
+        manual_lease = services.acquire_action_lease(
+            actor=self.monitor, fact=manual_fact, device_id="manual-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+        )
+        services.record_action_result(actor=self.monitor, payload={
+            "leaseId": str(manual_lease.public_id), "leaseToken": manual_lease._plain_token,
+            "deviceId": "manual-device", "resultCode": "FAILED", "actionId": "manual-plan", "result": {},
+        })
+        DutyNotification.objects.filter(action_lease=manual_lease).delete()
+        manual_fact.action_leases.all().delete()
+        with self.assertRaises(services.ReportingError) as manual:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=manual_fact, device_id="manual-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(manual.exception.code, "ACTION_MANUAL_REVIEW_REQUIRED")
+
     def test_action_lease_failure_creates_duty_notification_and_can_be_acknowledged(self):
         self.ingest()
         DutyNotification.objects.all().delete()
@@ -411,7 +522,10 @@ class ReportingFlowTests(TestCase):
         lease.save(update_fields=["expires_at", "updated_at"])
         call_command("expire_action_leases", verbosity=0)
         lease.refresh_from_db()
+        fact.refresh_from_db()
         self.assertEqual(lease.status, ActionLease.Status.UNKNOWN)
+        self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNKNOWN)
+        self.assertEqual(fact.processing_source, "SERVER_LEASE_TIMEOUT")
         self.assertEqual(DutyNotification.objects.filter(recipient=self.monitor, result_code="UNKNOWN").count(), 1)
 
     def test_monthly_report_and_correction_create_new_versions(self):

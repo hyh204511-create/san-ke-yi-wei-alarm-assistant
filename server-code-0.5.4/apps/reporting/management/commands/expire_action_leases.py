@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apps.reporting.models import ActionLease
+from apps.reporting.models import ActionLease, AlarmFact
 from apps.reporting.services import ensure_action_notification
 
 
@@ -34,6 +34,11 @@ class Command(BaseCommand):
                 locked.finished_at = now
                 locked.last_attempt_at = now
                 locked.save(update_fields=["status", "result_code", "result_payload", "finished_at", "last_attempt_at", "updated_at"])
+                fact = AlarmFact.objects.select_for_update().get(pk=locked.fact_id)
+                fact.processing_status = AlarmFact.ProcessingStatus.UNKNOWN
+                fact.processing_source = "SERVER_LEASE_TIMEOUT"
+                fact.processing_marked_at = now
+                fact.save(update_fields=["processing_status", "processing_source", "processing_marked_at", "updated_at"])
                 ensure_action_notification(
                     actor=locked.actor, fact=locked.fact, result_code="UNKNOWN",
                     action_type=locked.action_type, lease=locked,

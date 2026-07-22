@@ -146,6 +146,18 @@ test("双渠道计划保留独立结果且未知状态禁止自动切换", async
   assert.match(worker, /executeSandboxIntercom/);
 });
 
+test("服务端处理状态同步到插件详情且刷新不依赖单一布尔值", async () => {
+  const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
+  const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
+  assert.match(worker, /processingStatus/);
+  assert.match(worker, /processingSource/);
+  assert.match(worker, /processingMarkedAt/);
+  assert.match(worker, /`processing:\$\{event\.eventId\}`/);
+  assert.match(content, /系统处理状态/);
+  assert.match(content, /处理状态来源/);
+  assert.match(content, /处理状态时间/);
+});
+
 test("插件产品文案区分自动TEXT_TTS和人工语音对讲", async () => {
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");

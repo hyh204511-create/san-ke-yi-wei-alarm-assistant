@@ -9,6 +9,13 @@ from apps.governance.encrypted_fields import EncryptedJSONField
 
 
 class AlarmFact(TimeStampedModel):
+    class ProcessingStatus(models.TextChoices):
+        UNPROCESSED = "UNPROCESSED", "未处理"
+        EXECUTING = "EXECUTING", "处理中"
+        PROCESSED = "PROCESSED", "已处理"
+        MANUAL_REQUIRED = "MANUAL_REQUIRED", "待人工处理"
+        UNKNOWN = "UNKNOWN", "处理结果未知"
+
     event_id = models.CharField(max_length=160, unique=True)
     business_fingerprint = models.CharField(max_length=64, unique=True, null=True, blank=True)
     alarm_id = models.CharField(max_length=160, blank=True, default="")
@@ -24,6 +31,9 @@ class AlarmFact(TimeStampedModel):
     completion_source = models.CharField(max_length=30, blank=True, default="MANUAL_CONFIRMATION")
     completion_manual_required = models.BooleanField(default=True, db_index=True)
     completion_reason = models.CharField(max_length=500, blank=True, default="")
+    processing_status = models.CharField(max_length=30, choices=ProcessingStatus.choices, default=ProcessingStatus.UNPROCESSED, db_index=True)
+    processing_source = models.CharField(max_length=40, blank=True, default="")
+    processing_marked_at = models.DateTimeField(null=True, blank=True)
     event_snapshot = EncryptedJSONField(default=dict)
     decision_snapshot = EncryptedJSONField(default=dict)
     action_snapshot = EncryptedJSONField(default=dict)
