@@ -339,6 +339,8 @@ class ReportingFlowTests(TestCase):
         self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNKNOWN)
 
         manual_event = event_payload("alarm:id:9000000000000000091", alarm_name="超速驾驶")
+        manual_event["vehicleId"] = "manual-state-vehicle"
+        manual_event["vehicleNo"] = "湘A测099"
         self.post_json(
             reverse("report-event-upsert-api"),
             {"event": manual_event, "decision": decision_payload(), "action": {}}, action_token=True,
@@ -358,6 +360,54 @@ class ReportingFlowTests(TestCase):
                 actor=self.monitor, fact=manual_fact, device_id="manual-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
             )
         self.assertEqual(manual.exception.code, "ACTION_MANUAL_REVIEW_REQUIRED")
+
+    def test_vehicle_alarm_scope_cooldown_blocks_distinct_alarm_ids_and_accounts(self):
+        self.client.force_login(self.monitor)
+        first_event = event_payload("alarm:id:9000000000000000092", alarm_name="超速驾驶")
+        second_event = event_payload("alarm:id:9000000000000000093", alarm_name="超速驾驶")
+        second_event["alarmId"] = "9000000000000000093"
+        second_event["alarmTime"] = "2026-07-23 03:02:00"
+        for event in [first_event, second_event]:
+            self.post_json(
+                reverse("report-event-upsert-api"),
+                {"event": event, "decision": decision_payload(), "action": {}},
+                action_token=True,
+            )
+        first_fact = AlarmFact.objects.get(event_id=first_event["eventId"])
+        second_fact = AlarmFact.objects.get(event_id=second_event["eventId"])
+        lease = services.acquire_action_lease(
+            actor=self.monitor, fact=first_fact, device_id="scope-device-a",
+            action_type="RESPONSE_PLAN", mode="SANDBOX",
+        )
+        services.record_action_result(actor=self.monitor, payload={
+            "leaseId": str(lease.public_id), "leaseToken": lease._plain_token,
+            "deviceId": "scope-device-a", "resultCode": "SUCCEEDED",
+            "actionId": "scope-plan-a", "result": {},
+        })
+        other = get_user_model().objects.create_user(username="scope-monitor-b")
+        AssistantProfile.objects.create(user=other, display_name="冷却锁监控员B", employee_code="SCOPE-B")
+        operator_role = getattr(RoleAssignment.Role, "MONITOR_OPERATOR", RoleAssignment.Role.UNIT_USER)
+        assign_role(user=other, role=operator_role, assigned_by=self.reporter)
+        EnterpriseGrant.objects.create(user=other, enterprise=self.enterprise)
+        claim_shift(user=other, platform_account_ref="scope-platform-b", workstation_id="scope-device-b")
+        with self.assertRaises(services.ReportingError) as cooldown:
+            services.acquire_action_lease(
+                actor=other, fact=second_fact, device_id="scope-device-b",
+                action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(cooldown.exception.code, "ACTION_SCOPE_COOLDOWN")
+
+    def test_action_without_stable_vehicle_id_is_blocked_for_manual_handling(self):
+        self.ingest()
+        fact = AlarmFact.objects.get(event_id=event_payload()["eventId"])
+        fact.vehicle_id = ""
+        fact.save(update_fields=["vehicle_id", "updated_at"])
+        with self.assertRaises(services.ReportingError) as blocked:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="unstable-scope-device",
+                action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(blocked.exception.code, "ACTION_SCOPE_IDENTITY_REQUIRED")
 
     def test_action_lease_failure_creates_duty_notification_and_can_be_acknowledged(self):
         self.ingest()

@@ -89,6 +89,7 @@ class ActionLease(TimeStampedModel):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="alarm_action_leases")
     device_id = models.CharField(max_length=120)
     action_type = models.CharField(max_length=60)
+    action_scope_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     lease_token_hash = models.CharField(max_length=64, unique=True, null=True, blank=True, default=None)
     result_code = models.CharField(max_length=30, blank=True, default="")
@@ -106,8 +107,16 @@ class ActionLease(TimeStampedModel):
                 condition=Q(status__in=["ACTIVE", "EXECUTING"]),
                 name="unique_active_fact_plan_lease",
             ),
+            models.UniqueConstraint(
+                fields=["action_scope_key"],
+                condition=Q(status__in=["ACTIVE", "EXECUTING"]) & ~Q(action_scope_key=""),
+                name="unique_active_vehicle_alarm_scope",
+            ),
         ]
-        indexes = [models.Index(fields=["status", "expires_at"], name="action_lease_status_expiry_idx")]
+        indexes = [
+            models.Index(fields=["status", "expires_at"], name="action_lease_status_expiry_idx"),
+            models.Index(fields=["action_scope_key", "-created_at"], name="action_scope_recent_idx"),
+        ]
 
 
 class DutyNotification(TimeStampedModel):

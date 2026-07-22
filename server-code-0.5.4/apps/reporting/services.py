@@ -131,6 +131,19 @@ def alarm_business_fingerprint(event):
     return hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def alarm_action_scope_key(fact):
+    vehicle_key = str(fact.vehicle_id or "").strip().upper()
+    snapshot = fact.event_snapshot if isinstance(fact.event_snapshot, dict) else {}
+    alarm_key = str(snapshot.get("alarmTypeId") or snapshot.get("alarmTypeKey") or fact.alarm_name or "").strip().upper()
+    alarm_key = {"超速": "超速驾驶", "超速报警": "超速驾驶"}.get(alarm_key, alarm_key)
+    enterprise_key = str(fact.enterprise_id or "")
+    if not vehicle_key or not alarm_key:
+        return ""
+    return hashlib.sha256(
+        json.dumps([enterprise_key, vehicle_key, alarm_key], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def normalized_capture_source(actor, event, source, seen_at):
     shift = active_shift_for_user(actor)
     source = source if isinstance(source, dict) else {}
@@ -283,6 +296,10 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
     if action_type not in {"TEXT_TTS", "VOICE_INTERCOM", "RESPONSE_PLAN"}:
         raise ReportingError("动作类型必须是TEXT_TTS、VOICE_INTERCOM或RESPONSE_PLAN", "INVALID_ACTION_TYPE", 422)
     now = timezone.now()
+    action_scope_key = alarm_action_scope_key(fact)
+    cooldown_seconds = max(60, min(int(getattr(settings, "ACTION_SCOPE_COOLDOWN_SECONDS", 600)), 86400))
+    if not action_scope_key:
+        raise ReportingError("缺少稳定车辆ID或报警类型，禁止自动下发并转人工", "ACTION_SCOPE_IDENTITY_REQUIRED", 409)
     if fact.processing_status == AlarmFact.ProcessingStatus.PROCESSED:
         raise ReportingError("该报警已经完成自动处置，禁止重复下发", "ACTION_ALREADY_COMPLETED", 409)
     if fact.processing_status == AlarmFact.ProcessingStatus.UNKNOWN:
@@ -302,12 +319,21 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
         AlarmFact.ProcessingStatus.EXECUTING, AlarmFact.ProcessingStatus.MANUAL_REQUIRED,
     }:
         raise ReportingError("该报警已有执行或人工接管记录，禁止自动重复下发", "ACTION_MANUAL_REVIEW_REQUIRED", 409)
+    if action_scope_key and ActionLease.objects.filter(
+        action_scope_key=action_scope_key,
+        created_at__gte=now - timedelta(seconds=cooldown_seconds),
+    ).exclude(fact=fact).exists():
+        raise ReportingError("同一车辆同类报警仍在防重复冷却窗口内，禁止再次自动下发", "ACTION_SCOPE_COOLDOWN", 409)
     raw_token = secrets.token_urlsafe(32)
-    lease = ActionLease.objects.create(
-        fact=fact, actor=actor, device_id=str(device_id)[:120], action_type=str(action_type)[:60],
-        lease_token_hash=_lease_token_hash(raw_token),
-        expires_at=now + timedelta(seconds=max(30, min(int(duration_seconds), 600))),
-    )
+    try:
+        with transaction.atomic():
+            lease = ActionLease.objects.create(
+                fact=fact, actor=actor, device_id=str(device_id)[:120], action_type=str(action_type)[:60],
+                action_scope_key=action_scope_key, lease_token_hash=_lease_token_hash(raw_token),
+                expires_at=now + timedelta(seconds=max(30, min(int(duration_seconds), 600))),
+            )
+    except IntegrityError as exc:
+        raise ReportingError("同一车辆同类报警已由其他账号或设备取得动作租约", "ACTION_SCOPE_CONFLICT", 409) from exc
     fact.processing_status = AlarmFact.ProcessingStatus.EXECUTING
     fact.processing_source = "SERVER_ACTION_LEASE"
     fact.processing_marked_at = now
