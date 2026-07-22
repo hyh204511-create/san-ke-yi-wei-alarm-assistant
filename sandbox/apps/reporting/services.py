@@ -37,7 +37,8 @@ ACTION_RESULT_CODES = {"EXECUTING", "SUCCEEDED", "FAILED", "UNKNOWN", "BLOCKED",
 ACTION_FAILURE_CODES = {"FAILED", "UNKNOWN", "BLOCKED", "MANUAL_REQUIRED"}
 SAFE_ACTION_RESULT_KEYS = {
     "receiptRef", "errorCode", "latencyMs", "attemptNumber", "simulated", "terminalTts",
-    "playbackStarted", "platformHttpStatus", "messageCode",
+    "playbackStarted", "platformHttpStatus", "messageCode", "processingStatus", "voiceStatus",
+    "textStatus", "fallbackUsed", "bytesSent", "durationMs",
 }
 VOICE_EVIDENCE_KEYS = {
     "leaseToken", "deviceId", "audioSha256", "durationMs", "recordedStartedAt", "recordedEndedAt",
@@ -243,14 +244,18 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
     if device and str(mode or "LIVE").upper() == "LIVE" and device.platform_identity_status != "VERIFIED":
         raise ReportingError("省平台账号身份尚未核验，禁止真实动作", "PLATFORM_IDENTITY_REQUIRED", 409)
     action_type = str(action_type or "").strip().upper()
-    action_type = {"TEXT": "TEXT_TTS", "VOICE": "VOICE_INTERCOM"}.get(action_type, action_type)
-    if action_type not in {"TEXT_TTS", "VOICE_INTERCOM"}:
-        raise ReportingError("动作类型必须是TEXT_TTS或VOICE_INTERCOM", "INVALID_ACTION_TYPE", 422)
+    action_type = {"TEXT": "TEXT_TTS", "VOICE": "VOICE_INTERCOM", "PLAN": "RESPONSE_PLAN"}.get(action_type, action_type)
+    if action_type not in {"TEXT_TTS", "VOICE_INTERCOM", "RESPONSE_PLAN"}:
+        raise ReportingError("动作类型必须是TEXT_TTS、VOICE_INTERCOM或RESPONSE_PLAN", "INVALID_ACTION_TYPE", 422)
     now = timezone.now()
     active_statuses = [ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING]
-    ActionLease.objects.filter(fact=fact, action_type=action_type, status__in=active_statuses, expires_at__lte=now).update(status=ActionLease.Status.EXPIRED, finished_at=now)
-    if ActionLease.objects.filter(fact=fact, action_type=action_type, status__in=active_statuses).exists():
-        raise ReportingError("该报警已有设备取得动作租约", "ACTION_LEASE_CONFLICT", 409)
+    ActionLease.objects.filter(fact=fact, status__in=active_statuses, expires_at__lte=now).update(status=ActionLease.Status.EXPIRED, finished_at=now)
+    if ActionLease.objects.filter(fact=fact, status__in=active_statuses).exists():
+        raise ReportingError("该报警已有设备取得处置计划租约", "ACTION_LEASE_CONFLICT", 409)
+    if ActionLease.objects.filter(fact=fact, action_type="RESPONSE_PLAN", status=ActionLease.Status.COMPLETED).exists():
+        raise ReportingError("该报警已经完成自动处置，禁止重复下发", "ACTION_ALREADY_COMPLETED", 409)
+    if ActionLease.objects.filter(fact=fact, status=ActionLease.Status.UNKNOWN).exists():
+        raise ReportingError("该报警存在结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
     raw_token = secrets.token_urlsafe(32)
     lease = ActionLease.objects.create(
         fact=fact, actor=actor, device_id=str(device_id)[:120], action_type=str(action_type)[:60],
@@ -292,14 +297,14 @@ def _safe_action_result(payload):
     for key, value in result.items():
         if key == "receiptRef":
             safe[key] = str(value)[:160]
-        elif key == "errorCode" or key == "messageCode":
+        elif key in {"errorCode", "messageCode", "processingStatus", "voiceStatus", "textStatus"}:
             safe[key] = str(value)[:80]
-        elif key == "latencyMs" or key == "attemptNumber" or key == "platformHttpStatus":
+        elif key in {"latencyMs", "attemptNumber", "platformHttpStatus", "bytesSent", "durationMs"}:
             try:
                 safe[key] = max(0, min(int(value), 300000))
             except (TypeError, ValueError) as exc:
                 raise ReportingError("动作回执数字字段无效", "INVALID_ACTION_RESULT", 422) from exc
-        elif key in {"simulated", "terminalTts", "playbackStarted"}:
+        elif key in {"simulated", "terminalTts", "playbackStarted", "fallbackUsed"}:
             if not isinstance(value, bool):
                 raise ReportingError("动作回执布尔字段无效", "INVALID_ACTION_RESULT", 422)
             safe[key] = value

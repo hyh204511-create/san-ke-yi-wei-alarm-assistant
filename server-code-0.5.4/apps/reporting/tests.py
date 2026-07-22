@@ -208,19 +208,45 @@ class ReportingFlowTests(TestCase):
         self.assertEqual(AlarmFact.objects.count(), 1)
         self.assertEqual(CaptureSource.objects.count(), 50)
 
-    def test_only_one_active_action_lease_per_alarm_and_action(self):
+    def test_only_one_active_plan_lease_per_alarm_across_all_channels(self):
         self.ingest()
         fact = AlarmFact.objects.get()
-        first = services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-one", action_type="TEXT")
+        first = services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-one", action_type="RESPONSE_PLAN")
         self.assertEqual(first.status, ActionLease.Status.ACTIVE)
         with self.assertRaises(services.ReportingError) as caught:
-            services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-two", action_type="TEXT")
+            services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-two", action_type="VOICE")
         self.assertEqual(caught.exception.code, "ACTION_LEASE_CONFLICT")
         first.status = ActionLease.Status.EXECUTING
         first.save(update_fields=["status", "updated_at"])
         with self.assertRaises(services.ReportingError) as caught_executing:
             services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-three", action_type="TEXT")
         self.assertEqual(caught_executing.exception.code, "ACTION_LEASE_CONFLICT")
+
+    def test_completed_plan_and_unknown_action_both_block_automatic_replay(self):
+        self.ingest()
+        fact = AlarmFact.objects.get()
+        completed = services.acquire_action_lease(
+            actor=self.monitor, fact=fact, device_id="device-completed", action_type="PLAN", mode="SANDBOX",
+        )
+        completed.status = ActionLease.Status.COMPLETED
+        completed.result_code = "SUCCEEDED"
+        completed.finished_at = timezone.now()
+        completed.save(update_fields=["status", "result_code", "finished_at", "updated_at"])
+        with self.assertRaises(services.ReportingError) as already_completed:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="device-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(already_completed.exception.code, "ACTION_ALREADY_COMPLETED")
+
+        completed.action_type = "TEXT_TTS"
+        completed.status = ActionLease.Status.UNKNOWN
+        completed.result_code = "UNKNOWN"
+        completed.save(update_fields=["action_type", "status", "result_code", "updated_at"])
+        with self.assertRaises(services.ReportingError) as unknown:
+            services.acquire_action_lease(
+                actor=self.monitor, fact=fact, device_id="device-unknown-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            )
+        self.assertEqual(unknown.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
 
     def test_action_lease_failure_creates_duty_notification_and_can_be_acknowledged(self):
         self.ingest()

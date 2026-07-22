@@ -92,9 +92,9 @@ class ActionLease(TimeStampedModel):
         db_table = "assistant_action_leases"
         constraints = [
             models.UniqueConstraint(
-                fields=["fact", "action_type"],
+                fields=["fact"],
                 condition=Q(status__in=["ACTIVE", "EXECUTING"]),
-                name="unique_active_fact_action_lease",
+                name="unique_active_fact_plan_lease",
             ),
         ]
         indexes = [models.Index(fields=["status", "expires_at"], name="action_lease_status_expiry_idx")]
