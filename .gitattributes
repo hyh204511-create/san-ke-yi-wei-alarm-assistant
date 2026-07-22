@@ -1,0 +1,5 @@
+browser-extension/assets/alarm-scripts/*.txt text eol=lf
+browser-extension/assets/alarm-audio/*.json text eol=lf
+browser-extension/assets/alarm-audio/*.mp3 binary
+browser-extension/assets/alarm-audio/*.wav binary
+browser-extension/assets/alarm-audio/*.pcm binary

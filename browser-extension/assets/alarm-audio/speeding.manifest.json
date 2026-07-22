@@ -1,0 +1,66 @@
+{
+  "ruleCode": "SPEEDING",
+  "version": 1,
+  "locale": "zh-CN",
+  "text": "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。",
+  "generatedAt": "2026-07-23T00:03:46.1249623+08:00",
+  "generator": {
+    "provider": "Microsoft Windows Speech Synthesis",
+    "model": "Microsoft Huihui Desktop",
+    "synthesisType": "system-tts",
+    "voiceGender": "Female",
+    "voiceAge": "Adult",
+    "rate": -1,
+    "volume": 100
+  },
+  "processing": {
+    "leadingSilenceMilliseconds": 200,
+    "trailingSilenceMilliseconds": 200,
+    "targetIntegratedLoudnessLufs": -16,
+    "targetTruePeakDbfs": -1.5
+  },
+  "durationSeconds": 8.66225,
+  "files": {
+    "text": {
+      "path": "../alarm-scripts/speeding.zh-CN.txt",
+      "encoding": "UTF-8",
+      "sha256": "9d4d795697e27dd4d8da287fa649f8417c4a14e4b3f1eec565c9cf2c58ca24d7"
+    },
+    "preview": {
+      "path": "speeding-female-preview.mp3",
+      "format": "MP3",
+      "bitrate": 128000,
+      "channels": 1,
+      "sha256": "a108aac65e89508df7b0626c79a671cf25648eb33f5664e3953688eaf93469ba"
+    },
+    "master": {
+      "path": "speeding-female-master.wav",
+      "format": "WAV",
+      "sampleRate": 32000,
+      "sampleWidthBits": 16,
+      "channels": 1,
+      "sha256": "87c831d872c93c62acec9d271306e9e88720dbaedd9504d1ce9aa7711d7af021"
+    },
+    "platformPcm": {
+      "path": "speeding-female-8k-mono.pcm",
+      "format": "PCM_S16LE",
+      "sampleRate": 8000,
+      "sampleWidthBits": 16,
+      "channels": 1,
+      "endianness": "little",
+      "byteLength": 138596,
+      "sha256": "94974f7f4ed6691a248969d85653801144ddf4b097476db9bf2c6cb19cd9498e"
+    }
+  },
+  "qualityChecks": {
+    "clippedSamples": 0,
+    "peakDbfs": -1.4994,
+    "leading200msSilent": true,
+    "trailing200msSilent": true
+  },
+  "review": {
+    "status": "PENDING_HUMAN_REVIEW",
+    "integrationAllowed": false,
+    "notes": "试听确认发音、停顿和车内辨识度后，方可接入真实下发。"
+  }
+}
