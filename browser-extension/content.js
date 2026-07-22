@@ -160,6 +160,65 @@
     } catch { return false; }
   }
 
+  const REPORT_NAVIGATION = Object.freeze({
+    ALARM_DISPOSAL_RATE: { parent: "报表中心", leaf: "处置率报表", route: "#/report-center/alarm-disposal-rate" },
+    ALARM_PROCESSING_RATE: { parent: "报表中心", leaf: "处理率报表", route: "#/report-center/alarm-process-rate" },
+    ALARM_CENTER: { parent: "报表中心", leaf: "报警信息查询", route: "#/report-center/alarm-info" },
+    VEHICLE_BASE_INFO: { parent: "报表中心", leaf: "车辆基础信息", route: "#/report-center/vehicle-mes" },
+    TRACK_COMPLETENESS: { parent: "联网联控", leaf: "考核明细", route: "#/network-monitor/examine-list", tab: "轨迹完整率明细" },
+  });
+
+  function exactVisibleText(text, selectors) {
+    const nodes = [...document.querySelectorAll(selectors)];
+    return nodes.filter((node) => {
+      const value = String(node.textContent || "").replace(/\s+/g, " ").trim();
+      let current = node;
+      while (current && current !== document.documentElement) {
+        const style = getComputedStyle(current);
+        if (style.display === "none" || style.visibility === "hidden") return false;
+        current = current.parentElement;
+      }
+      return value === text;
+    });
+  }
+
+  async function waitForReportState(predicate, timeoutMs = 8000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (predicate()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+  }
+
+  async function navigateReportSource(sourceType) {
+    const target = REPORT_NAVIGATION[sourceType];
+    if (!target) return { ok: false, code: "REPORT_SOURCE_UNKNOWN" };
+    if ((location.hash || "").split("?")[0] !== target.route) {
+      const leafBefore = exactVisibleText(target.leaf, "li.el-menu-item,li[role='menuitem']");
+      if (leafBefore.length !== 1) {
+        const parents = exactVisibleText(target.parent, ".el-submenu__title,li[role='menuitem']");
+        if (parents.length !== 1) return { ok: false, code: parents.length ? "REPORT_PARENT_AMBIGUOUS" : "REPORT_PARENT_NOT_FOUND" };
+        parents[0].click();
+        await waitForReportState(() => exactVisibleText(target.leaf, "li.el-menu-item,li[role='menuitem']").length === 1, 3000);
+      }
+      const leaves = exactVisibleText(target.leaf, "li.el-menu-item,li[role='menuitem']");
+      if (leaves.length !== 1) return { ok: false, code: leaves.length ? "REPORT_LEAF_AMBIGUOUS" : "REPORT_LEAF_NOT_FOUND" };
+      leaves[0].click();
+      const arrived = await waitForReportState(() => (location.hash || "").split("?")[0] === target.route);
+      if (!arrived) return { ok: false, code: "REPORT_ROUTE_TIMEOUT", route: (location.hash || "").split("?")[0] };
+    }
+    if (target.tab) {
+      const tabs = exactVisibleText(target.tab, ".el-radio-group .el-radio-button");
+      if (tabs.length !== 1) return { ok: false, code: tabs.length ? "REPORT_SOURCE_TAB_AMBIGUOUS" : "REPORT_SOURCE_TAB_NOT_FOUND", route: target.route };
+      const clickable = tabs[0];
+      if (!clickable.classList?.contains("is-active")) clickable.click();
+      const active = await waitForReportState(() => exactVisibleText(target.tab, ".el-radio-group .el-radio-button.is-active").length === 1, 3000);
+      if (!active) return { ok: false, code: "REPORT_SOURCE_TAB_TIMEOUT", route: target.route };
+    }
+    return { ok: true, code: "REPORT_SOURCE_READY", sourceType, route: target.route };
+  }
+
   window.addEventListener("message", (event) => {
     if (event.source === window && event.origin === location.origin && event.data?.source === "hn-alarm-realtime-poll") {
       lastRealtimePollAt = event.data.polledAt || new Date().toISOString();
@@ -185,6 +244,12 @@
       Promise.resolve(globalThis.HnPlatformActionRuntime?.execute(message.request))
         .then((result) => sendResponse(result || { status: "BLOCKED", errorCode: "ACTION_RUNTIME_UNAVAILABLE" }))
         .catch(() => sendResponse({ status: "UNKNOWN", errorCode: "ACTION_RUNTIME_EXCEPTION" }));
+      return true;
+    }
+    if (message?.type === "PLATFORM_REPORT_NAVIGATE") {
+      navigateReportSource(message.sourceType)
+        .then(sendResponse)
+        .catch(() => sendResponse({ ok: false, code: "REPORT_NAVIGATION_EXCEPTION" }));
       return true;
     }
     return false;

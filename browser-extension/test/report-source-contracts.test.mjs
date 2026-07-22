@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   REPORT_SOURCE_CONTRACTS,
@@ -7,15 +8,29 @@ import {
   sanitizeContractObservation,
   requireVerifiedReportContract,
 } from "../report-source-contracts.js";
-import { buildSourcePageUpload, pollReportTasks } from "../report-task-runner.js";
+import {
+  buildPlatformReportRequest,
+  buildSourcePageUpload,
+  parsePlatformReportPage,
+  pollReportTasks,
+  standardRowsFieldSignature,
+} from "../report-task-runner.js";
 
-test("五来源默认全部阻断，且没有猜测接口", () => {
+test("五来源使用已确认的真实路由和接口契约", () => {
   assert.equal(REPORT_SOURCE_TYPES.length, 5);
   for (const source of REPORT_SOURCE_TYPES) {
-    assert.equal(REPORT_SOURCE_CONTRACTS[source].enabled, false);
-    assert.equal(REPORT_SOURCE_CONTRACTS[source].path, "");
-    assert.throws(() => requireVerifiedReportContract(source), (error) => error.code === "REPORT_CONTRACT_UNVERIFIED");
+    const contract = requireVerifiedReportContract(source);
+    assert.equal(contract.enabled, true);
+    assert.equal(contract.version, "HN_PLATFORM_2026_07_23_V1");
+    assert.match(contract.route, /^#\//);
+    assert.match(contract.path, /^\/api\//);
+    assert.match(contract.fieldSignature, /^[0-9a-f]{64}$/);
   }
+  assert.equal(REPORT_SOURCE_CONTRACTS.ALARM_DISPOSAL_RATE.path, "/api/report-service/alarm/info/alarmResponseRateCount");
+  assert.equal(REPORT_SOURCE_CONTRACTS.ALARM_PROCESSING_RATE.path, "/api/report-service/alarm/info/alarmProcessingRateCount");
+  assert.equal(REPORT_SOURCE_CONTRACTS.ALARM_CENTER.path, "/api/report-service/alarm/info/alarmInformationQueryReport");
+  assert.equal(REPORT_SOURCE_CONTRACTS.VEHICLE_BASE_INFO.path, "/api/report-service/alarmDriverFaceResult/queryVehicleList");
+  assert.equal(REPORT_SOURCE_CONTRACTS.TRACK_COMPLETENESS.path, "/api/report-service/network/kpi/mile");
 });
 
 test("契约观察只保留结构并拒绝凭证", () => {
@@ -43,7 +58,86 @@ test("分页载荷拒绝嵌套敏感字段", () => {
   }), (error) => error.code === "SENSITIVE_FIELD_REJECTED");
 });
 
-test("轮询能看到任务但不会领取未验证来源", async () => {
+test("日报周报月报请求统一使用服务器接收时间和车辆维度", () => {
+  const task = { periodStart: "2026-07-01", periodEnd: "2026-07-31" };
+  const request = buildPlatformReportRequest({
+    task, sourceType: "ALARM_PROCESSING_RATE", pageNumber: 2, pageSize: 500,
+    alarmIds: ["speeding-id", "speeding-id", "fatigue-id"],
+    vehicleStatusCodes: ["10", "OPERATING_NOT_ASSESSED_CONFIRMED_CODE"],
+  });
+  assert.equal(request.searchFlag, "1");
+  assert.equal(request.latitudeSelection, "5");
+  assert.equal(request.timeType, "2");
+  assert.equal(request.alarmQueryStartTime, "2026-07-01 00:00:00");
+  assert.equal(request.alarmQueryEndTime, "2026-07-31 23:59:59");
+  assert.deepEqual(request.alarmIds, ["speeding-id", "fatigue-id"]);
+  assert.equal(request.pageNum, 2);
+  assert.equal(request.pageSize, 500);
+});
+
+test("五来源响应转换为服务端标准行且结构变化立即阻断", () => {
+  const disposalRow = Object.fromEntries(
+    REPORT_SOURCE_CONTRACTS.ALARM_DISPOSAL_RATE.rawRowFields.map((field) => [field, null]),
+  );
+  Object.assign(disposalRow, {
+    groupId: "enterprise-1", mechanism: "合成企业", certId: "模拟车",
+    alarmCount: 3, disposalRate: "100%",
+  });
+  const disposal = parsePlatformReportPage("ALARM_DISPOSAL_RATE", {
+    success: true, total: 1,
+    data: [{}, [disposalRow], {}],
+  });
+  assert.equal(disposal.total, 1);
+  assert.deepEqual(disposal.rows[0], {
+    enterpriseId: "enterprise-1", enterpriseName: "合成企业",
+    values: {
+      "机构": "合成企业", "类型": null, "车牌号": "模拟车", "车牌颜色": null,
+      "所属地市": null, "正报总数": null, "申诉通过数": null, "判断中总数": null,
+      "车辆报警总数": 3, "处置率": "100%", "已处置报警数": null,
+      "未处置报警数": null, "异常申诉数": null, "异常申诉通过数": null,
+    },
+  });
+  const track = parsePlatformReportPage("TRACK_COMPLETENESS", {
+    success: true, total: 1,
+    data: [{ carId: "vehicle-1", certId: "模拟车", companyId: "enterprise-1", companyName: "合成企业", totalMile: 0, continuousMileRateStr: "100%" }],
+  });
+  assert.equal(track.rows[0].totalMileage, 0);
+  assert.equal(track.rows[0].completeness, "100%");
+  assert.throws(
+    () => parsePlatformReportPage("VEHICLE_BASE_INFO", { success: true, data: { rows: [] }, total: 0 }),
+    (error) => error.code === "REPORT_CONTRACT_MISMATCH",
+  );
+  assert.throws(
+    () => parsePlatformReportPage("TRACK_COMPLETENESS", {
+      success: true, total: 1,
+      data: [{ carId: "v1", certId: "模拟车", companyId: "e1", companyName: "合成企业", totalMile: 1 }],
+    }),
+    (error) => error.code === "REPORT_RAW_FIELDS_CHANGED",
+  );
+});
+
+test("无法证明车辆状态全范围或报警类型全选时禁止取数", () => {
+  const task = { periodStart: "2026-07-21", periodEnd: "2026-07-21" };
+  assert.throws(
+    () => buildPlatformReportRequest({ task, sourceType: "VEHICLE_BASE_INFO", pageNumber: 1, vehicleStatusCodes: ["10"] }),
+    (error) => error.code === "VEHICLE_STATUS_SCOPE_UNCONFIRMED",
+  );
+  assert.throws(
+    () => buildPlatformReportRequest({ task, sourceType: "ALARM_CENTER", pageNumber: 1, vehicleStatusCodes: ["10", "confirmed-second"] }),
+    (error) => error.code === "ALARM_SCOPE_UNCONFIRMED",
+  );
+});
+
+test("标准行字段签名与业务值无关并保持64位哈希", async () => {
+  const first = [{ vehicleId: "v1", plate: "A", enterpriseId: "e1", enterpriseName: "企业A", vehicleStatus: "10", lastLocationTime: "2026-07-21" }];
+  const second = [{ vehicleId: "v2", plate: "B", enterpriseId: "e2", enterpriseName: "企业B", vehicleStatus: "10", lastLocationTime: null }];
+  const left = await standardRowsFieldSignature(first);
+  const right = await standardRowsFieldSignature(second);
+  assert.match(left, /^[0-9a-f]{64}$/);
+  assert.equal(left, right);
+});
+
+test("轮询能识别包含已确认五来源契约的任务", async () => {
   let calls = 0;
   const result = await pollReportTasks({
     identity: { authenticated: true, permissions: ["report.collect"] },
@@ -53,6 +147,25 @@ test("轮询能看到任务但不会领取未验证来源", async () => {
     },
   });
   assert.equal(calls, 1);
-  assert.equal(result.tasks.length, 0);
-  assert.deepEqual(result.blocked, [{ taskId: "t1", code: "REPORT_CONTRACT_UNVERIFIED" }]);
+  assert.equal(result.tasks.length, 1);
+  assert.deepEqual(result.blocked, []);
+});
+
+test("报表导航只点击已确认菜单和轨迹页签，不点击查询或导出", async () => {
+  const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
+  const navigation = content.slice(
+    content.indexOf("const REPORT_NAVIGATION"),
+    content.indexOf("window.addEventListener(\"message\""),
+  );
+  for (const route of [
+    "#/report-center/alarm-disposal-rate",
+    "#/report-center/alarm-process-rate",
+    "#/report-center/alarm-info",
+    "#/report-center/vehicle-mes",
+    "#/network-monitor/examine-list",
+  ]) assert.match(navigation, new RegExp(route.replace(/[/-]/g, "\\$&")));
+  assert.match(navigation, /轨迹完整率明细/);
+  assert.match(navigation, /length !== 1/);
+  assert.equal((navigation.match(/\.click\(\)/g) || []).length, 3);
+  assert.doesNotMatch(navigation, /导出|语音对讲|文本下发|查岗|申诉/);
 });

@@ -83,13 +83,14 @@ class FiveSourceReportTaskTests(TestCase):
             "enterpriseName": self.enterprise.name, "totalMileage": mileage, "completeness": completeness,
         }
 
-    def test_task_freezes_required_sources_and_blocks_unverified_contracts(self):
+    def test_task_freezes_verified_sources_and_requires_authenticated_platform_device(self):
         task = self.task()
         self.assertEqual(task.required_source_types, ["VEHICLE_BASE_INFO", "TRACK_COMPLETENESS"])
         self.assertEqual(task.source_batches.count(), 2)
         with self.assertRaises(ReportingError) as caught:
             report_tasks.claim_report_task(actor=self.collector, task=task, device_id="FIVE-SOURCE-WS")
-        self.assertEqual(caught.exception.code, "REPORT_CONTRACT_UNVERIFIED")
+        self.assertEqual(caught.exception.code, "PLATFORM_SESSION_REQUIRED")
+        self.assertTrue(all(item["enabled"] for item in task.query_spec["contracts"].values()))
 
     def test_page_upload_is_idempotent_and_rejects_credentials_or_conflicts(self):
         task = self.task()

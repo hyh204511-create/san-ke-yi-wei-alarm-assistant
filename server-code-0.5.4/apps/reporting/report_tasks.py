@@ -48,11 +48,32 @@ ALARM_HEADERS = {
 }
 SENSITIVE_KEY = re.compile(r"cookie|authorization|token|password|passwd|captcha|验证码|密钥", re.I)
 
-# Real endpoint contracts intentionally remain disabled until an authorized
-# operator walks each source and the captured shape is reviewed.
 SOURCE_CONTRACTS = {
-    source: {"enabled": False, "version": "UNVERIFIED", "route": "", "method": "", "path": ""}
-    for source in SOURCE_TYPES
+    "ALARM_DISPOSAL_RATE": {
+        "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
+        "route": "#/report-center/alarm-disposal-rate", "method": "POST",
+        "path": "/api/report-service/alarm/info/alarmResponseRateCount",
+    },
+    "ALARM_PROCESSING_RATE": {
+        "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
+        "route": "#/report-center/alarm-process-rate", "method": "POST",
+        "path": "/api/report-service/alarm/info/alarmProcessingRateCount",
+    },
+    "ALARM_CENTER": {
+        "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
+        "route": "#/report-center/alarm-info", "method": "POST",
+        "path": "/api/report-service/alarm/info/alarmInformationQueryReport",
+    },
+    "VEHICLE_BASE_INFO": {
+        "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
+        "route": "#/report-center/vehicle-mes", "method": "POST",
+        "path": "/api/report-service/alarmDriverFaceResult/queryVehicleList",
+    },
+    "TRACK_COMPLETENESS": {
+        "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
+        "route": "#/network-monitor/examine-list", "method": "POST",
+        "path": "/api/report-service/network/kpi/mile",
+    },
 }
 
 
@@ -118,12 +139,15 @@ def period_for(report_type, start_value, end_value=None):
 
 
 def query_conditions(report_type, start, end):
+    platform_status_codes = [str(item) for item in getattr(settings, "PLATFORM_REPORT_VEHICLE_STATUS_CODES", []) if str(item)]
     common = {
         "vehicleStatuses": ["OPERATING", "OPERATING_NOT_ASSESSED"],
         "enterpriseSelection": "ALL_BY_VEHICLE_AFFILIATION",
         "periodStart": start.isoformat(),
         "periodEnd": end.isoformat(),
         "timezone": "Asia/Shanghai",
+        "platformVehicleStatusCodes": platform_status_codes,
+        "platformVehicleScopeVerified": len(set(platform_status_codes)) >= 2,
     }
     if report_type.startswith("ALARM_"):
         common.update({"dimension": "VEHICLE", "alarmTypeSelection": "ALL", "timeBasis": "SERVER_RECEIVED_AT"})
@@ -204,6 +228,8 @@ def claim_report_task(*, actor, task, device_id, duration_seconds=600):
     device = DeviceRegistration.objects.filter(device_id=device_id, user=actor, is_active=True).first()
     if not device or device.session_status != "AUTHENTICATED":
         raise ReportingError("当前插件设备尚未确认省平台登录", "PLATFORM_SESSION_REQUIRED", 409)
+    if task.query_spec.get("conditions", {}).get("platformVehicleScopeVerified") is not True:
+        raise ReportingError("营运与营运不考核的平台状态代码尚未完整确认", "VEHICLE_STATUS_SCOPE_UNCONFIRMED", 409)
     now = timezone.now()
     if task.lease_expires_at and task.lease_expires_at > now and task.device_id != device_id:
         raise ReportingError("该任务已被其他设备领取", "REPORT_TASK_LEASE_CONFLICT", 409)
