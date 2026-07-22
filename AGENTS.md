@@ -69,6 +69,8 @@ curl http://127.0.0.1:17321/health
 
 - 实时监控页 `#/vehicle-monitor/real-time` 中，`getVideoUnprocessedAlarm` 和 `alarmKind=0` 的 SharedWorker 消息是 `PREWARNING`，不得因为同一路由直接升级为正式实时报警。
 - 平台通过 SharedWorker 推送的 `funCode=ALARM_ADD` 且 `alarmKind=1` 才归类为 `REALTIME`；page hook 只能旁路监听并脱敏上报，不得拦截、改写或主动发送平台消息。
+- `alarmPreProcessingInfo` 返回的 `PENDING` 是正式报警，与 `REALTIME` 在插件面板和正式报警队列中归为同一类；内部仍保留 `sourceKind`、来源接口和来源排序，不能把 `PREWARNING` 合并进来。
+- `alarmQueryList` 的分类必须同时使用请求发起时的路由和响应完成时已经渲染的活动页签；活动页签在发起时为空时，响应阶段按原路由重判，避免正式实时报警被误记为历史查询。
 - 浏览器真实验证必须使用当前 `browser-extension/` 解压目录；仓库中的旧 `browser-extension.crx` 不代表当前源码。源码变更后由用户重新加载扩展并按既有授权流程让已打开页面重新注入，助手不得点击扩展管理页或平台业务按钮。
 
 - `docs/product/`：需求和建设范围。

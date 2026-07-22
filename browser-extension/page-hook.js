@@ -8,6 +8,7 @@
   const REALTIME_POLL_INTERVAL_MS = 3000;
   const REALTIME_MONITOR_ROUTE = /^#\/vehicle-monitor\/real-time(?:$|[/?])/i;
   const REALTIME_POLL_PATH = "/alarm-service/alarm/center/getVideoUnprocessedAlarm";
+  const ALARM_QUERY_PATH = "/alarm-service/alarm/center/alarmQueryList";
   let realtimePoll = null;
   let realtimePollInFlight = false;
   let realtimePollFailures = 0;
@@ -27,17 +28,20 @@
   ];
   const SENSITIVE_KEY = /authorization|cookie|credential|password|secret|session|token|mobile|phone|contactInformation|driverNumber|idCard/i;
 
-  function matchRule(url) {
+  function matchRule(url, view = {}) {
     const path = new URL(String(url), location.href).pathname.replace(/^\/api/, "");
+    const route = view.route ?? location.hash ?? "";
+    const activeTab = path.includes(ALARM_QUERY_PATH)
+      ? view.activeTab === undefined ? activeMonitorAlarmTab(route) : view.activeTab
+      : null;
     if (path.includes("/alarm-service/alarm/center/getVideoUnprocessedAlarm")) {
-      const monitorRoute = /^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(location.hash || "");
+      const monitorRoute = REALTIME_MONITOR_ROUTE.test(route);
       return { name: monitorRoute ? "prewarning-query" : "realtime-alarms", category: "alarm", path };
     }
-    if (path.includes("/alarm-service/alarm/center/alarmQueryList")) {
-      const activeTab = activeMonitorAlarmTab();
-      const realtimeRoute = /^#\/alarm-center\/alarm-verification(?:$|[/?])/i.test(location.hash || "")
+    if (path.includes(ALARM_QUERY_PATH)) {
+      const realtimeRoute = /^#\/alarm-center\/alarm-verification(?:$|[/?])/i.test(route)
         || activeTab === "REALTIME";
-      const prewarningRoute = /^#\/alarm-center\/pr-alarm-recorde(?:$|[/?])/i.test(location.hash || "")
+      const prewarningRoute = /^#\/alarm-center\/pr-alarm-recorde(?:$|[/?])/i.test(route)
         || activeTab === "PREWARNING";
       return { name: realtimeRoute ? "realtime-alarms" : prewarningRoute ? "prewarning-query" : "alarm-query", category: "alarm", path };
     }
@@ -45,8 +49,8 @@
     return rule ? { name: rule[0], category: rule[2], path } : null;
   }
 
-  function activeMonitorAlarmTab() {
-    if (!REALTIME_MONITOR_ROUTE.test(location.hash || "")) return null;
+  function activeMonitorAlarmTab(route = location.hash || "") {
+    if (!REALTIME_MONITOR_ROUTE.test(route)) return null;
     try {
       const activeNodes = [...document.querySelectorAll(
         ".tab-item.active,[role='tab'][aria-selected='true'],[class*='tab-item'][class*='active']"
@@ -56,6 +60,20 @@
       if (activeText.some((text) => /^预警列表(?:\s+\d+)?$/.test(text))) return "PREWARNING";
     } catch {}
     return null;
+  }
+
+  function resolveResponseRule(rule, requestRoute, requestActiveTab) {
+    if (!rule?.path?.includes(ALARM_QUERY_PATH) || requestActiveTab || location.hash !== requestRoute) return rule;
+    const responseActiveTab = activeMonitorAlarmTab(requestRoute);
+    return matchRule(rule.path, { route: requestRoute, activeTab: responseActiveTab }) || rule;
+  }
+
+  function isAlarmQueryUrl(url) {
+    try {
+      return new URL(String(url), location.href).pathname.replace(/^\/api/, "").includes(ALARM_QUERY_PATH);
+    } catch {
+      return false;
+    }
   }
 
   function redact(value, seen = new WeakSet()) {
@@ -197,12 +215,12 @@
     } catch {}
   }
 
-  function isRealtimePollTarget(rule) {
-    return Boolean(rule?.path?.includes(REALTIME_POLL_PATH) && REALTIME_MONITOR_ROUTE.test(location.hash || ""));
+  function isRealtimePollTarget(rule, route = location.hash || "") {
+    return Boolean(rule?.path?.includes(REALTIME_POLL_PATH) && REALTIME_MONITOR_ROUTE.test(route));
   }
 
-  function registerRealtimePoll(rule, execute) {
-    if (!isRealtimePollTarget(rule) || typeof execute !== "function") return;
+  function registerRealtimePoll(rule, execute, route = location.hash || "") {
+    if (!isRealtimePollTarget(rule, route) || typeof execute !== "function") return;
     realtimePoll = execute;
     realtimePollFailures = 0;
   }
@@ -239,7 +257,9 @@
     const input = args[0];
     const init = args[1] || {};
     const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
-    const rule = matchRule(url);
+    const requestRoute = location.hash || "";
+    const requestActiveTab = isAlarmQueryUrl(url) ? activeMonitorAlarmTab(requestRoute) : null;
+    const rule = matchRule(url, { route: requestRoute, activeTab: requestActiveTab });
     const method = String(init.method || input.method || "GET").toUpperCase();
     const requestHeaders = safeHeaders(init.headers || input.headers);
     const requestBodyPromise = init.body != null
@@ -256,14 +276,16 @@
         requestBodyPromise,
         response.clone().text().catch(() => "")
       ]).then(([requestBody, responseText]) => {
+        const responseRule = resolveResponseRule(rule, requestRoute, requestActiveTab);
         const contentType = response.headers.get("content-type") || "";
         emit({
           transport: "fetch",
           method,
           url: new URL(url, location.href).href,
-          path: rule.path,
-          matchedRule: rule.name,
-          category: rule.category,
+          route: requestRoute,
+          path: responseRule.path,
+          matchedRule: responseRule.name,
+          category: responseRule.category,
           startedAt: new Date(startedAt).toISOString(),
           durationMs: Math.round(performance.now() - startedMark),
           status: response.status,
@@ -275,11 +297,11 @@
             ...parseResponse(responseText, contentType)
           }
         });
-        if (response.ok && isRealtimePollTarget(rule)) {
+        if (response.ok && isRealtimePollTarget(responseRule, requestRoute)) {
           lastRealtimeResponseText = responseText;
           const replayInput = input instanceof Request ? input.clone() : input;
           const replayInit = { ...init };
-          registerRealtimePoll(rule, async () => {
+          registerRealtimePoll(responseRule, async () => {
             const pollStartedAt = Date.now();
             const pollStartedMark = performance.now();
             const nextInput = replayInput instanceof Request ? replayInput.clone() : replayInput;
@@ -291,15 +313,15 @@
             if (changed) {
               lastRealtimeResponseText = pollText;
               emit({
-                transport: "fetch-poll", method, url: new URL(url, location.href).href, path: rule.path,
-                matchedRule: rule.name, category: rule.category, startedAt: new Date(pollStartedAt).toISOString(),
+                transport: "fetch-poll", method, url: new URL(url, location.href).href, route: requestRoute,
+                path: responseRule.path, matchedRule: responseRule.name, category: responseRule.category, startedAt: new Date(pollStartedAt).toISOString(),
                 durationMs: Math.round(performance.now() - pollStartedMark), status: pollResponse.status, ok: pollResponse.ok,
                 request: { headers: requestHeaders, body: requestBody },
                 response: { headers: safeHeaders(pollResponse.headers), contentType: pollContentType, ...parseResponse(pollText, pollContentType) }
               });
             }
             return pollResponse.status;
-          });
+          }, requestRoute);
         }
       });
     }).catch((error) => {
@@ -328,10 +350,14 @@
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     const realtimePollReplay = this.__hnRealtimePollReplay === true;
+    const requestRoute = location.hash || "";
+    const requestActiveTab = isAlarmQueryUrl(url) ? activeMonitorAlarmTab(requestRoute) : null;
     this.__hnCollector = {
       method: String(method).toUpperCase(),
       url: new URL(String(url), location.href).href,
-      rule: matchRule(url),
+      route: requestRoute,
+      activeTab: requestActiveTab,
+      rule: matchRule(url, { route: requestRoute, activeTab: requestActiveTab }),
       headers: {},
       replayHeaders: {},
       realtimePollReplay
@@ -353,6 +379,7 @@
       const startedAt = Date.now();
       const startedMark = performance.now();
       this.addEventListener("loadend", () => {
+        const responseRule = resolveResponseRule(meta.rule, meta.route, meta.activeTab);
         let responseText = "";
         try {
           if (!this.responseType || this.responseType === "text") responseText = this.responseText || "";
@@ -362,7 +389,7 @@
           responseText = "[response unavailable]";
         }
         const contentType = this.getResponseHeader("content-type") || "";
-        const realtimeTarget = isRealtimePollTarget(meta.rule);
+        const realtimeTarget = isRealtimePollTarget(responseRule, meta.route);
         const changed = !realtimeTarget || responseText !== lastRealtimeResponseText;
         if (meta.realtimePollReplay) reportRealtimePoll(this.status, changed);
         if (!meta.realtimePollReplay || changed) {
@@ -371,9 +398,10 @@
             transport: meta.realtimePollReplay ? "xhr-poll" : "xhr",
             method: meta.method,
             url: meta.url,
-            path: meta.rule.path,
-            matchedRule: meta.rule.name,
-            category: meta.rule.category,
+            route: meta.route,
+            path: responseRule.path,
+            matchedRule: responseRule.name,
+            category: responseRule.category,
             startedAt: new Date(startedAt).toISOString(),
             durationMs: Math.round(performance.now() - startedMark),
             status: this.status,
@@ -382,17 +410,17 @@
             response: { headers: {}, contentType, ...parseResponse(responseText, contentType) }
           });
         }
-        if (this.status >= 200 && this.status < 400 && isRealtimePollTarget(meta.rule)) {
+        if (this.status >= 200 && this.status < 400 && isRealtimePollTarget(responseRule, meta.route)) {
           const replayBody = body;
           const replayHeaders = { ...meta.replayHeaders };
-          registerRealtimePoll(meta.rule, () => new Promise((resolve) => {
+          registerRealtimePoll(responseRule, () => new Promise((resolve) => {
             const poll = new XMLHttpRequest();
             poll.__hnRealtimePollReplay = true;
             poll.open(meta.method, meta.url, true);
             for (const [name, value] of Object.entries(replayHeaders)) poll.setRequestHeader(name, value);
             poll.addEventListener("loadend", () => resolve(poll.status), { once: true });
             poll.send(replayBody);
-          }));
+          }), meta.route);
         }
       }, { once: true });
     }

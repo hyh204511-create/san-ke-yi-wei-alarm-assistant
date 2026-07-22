@@ -138,7 +138,7 @@ test("插件产品文案区分自动TEXT_TTS和人工语音对讲", async () => 
   assert.match(readme, /VOICE_INTERCOM/);
 });
 
-test("实时、待处理和预报警具有独立来源语义", async () => {
+test("正式实时与待处理保留来源证据但在面板归为正式报警", async () => {
   const hook = await readFile(new URL("../page-hook.js", import.meta.url), "utf8");
   const domain = await readFile(new URL("../alarm-domain.js", import.meta.url), "utf8");
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
@@ -147,6 +147,9 @@ test("实时、待处理和预报警具有独立来源语义", async () => {
   assert.match(hook, /pending-alarms/);
   assert.match(domain, /kind: "PENDING", label: "待处理正式报警"/);
   assert.match(domain, /kind: "PREWARNING", label: "预报警（实时抓取）"/);
+  assert.match(content, /FORMAL_ALARM_KINDS = new Set\(\["REALTIME", "PENDING"\]\)/);
+  assert.match(content, /data-source="FORMAL"[^>]*>正式报警/);
+  assert.doesNotMatch(content, /data-source="PENDING"/);
   assert.match(content, /实时报警/);
   assert.match(content, /待处理/);
   assert.match(content, /预报警来自省平台实时监控页的“预警列表”或“预警查询”页面/);
