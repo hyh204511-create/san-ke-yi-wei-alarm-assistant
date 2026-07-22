@@ -19,6 +19,7 @@ import { executeSandboxText } from "./sandbox-text.js";
 import { executeWithRetry } from "./response-retry.js";
 import { executeVoiceThenTextFallback } from "./response-plan-execution.js";
 import { createPlatformAuthCache } from "./platform-auth-cache.js";
+import { pollReportTasks } from "./report-task-runner.js";
 import {
   defaultPlatformSession,
   isHnPlatformUrl,
@@ -43,6 +44,8 @@ const SENSITIVE_CACHE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_ALLOWLIST_ITEMS = 1000;
 const KEEPALIVE_ALARM = "authorized-session-keepalive";
 const HEARTBEAT_ALARM = "assistant-device-heartbeat";
+const REPORT_TASK_ALARM = "five-source-report-task-poll";
+const REPORT_TASK_MONITOR_KEY = "reportTaskMonitor";
 const KEEPALIVE_POLICY_RETRY_MINUTES = 5;
 const KEEPALIVE_TARGETS = Object.freeze([
   Object.freeze({ route: "#/alarm-center/alarm-preprocessing", actionKey: "ALARM_PREPROCESSING_QUERY", mode: "CLICK_QUERY" }),
@@ -327,6 +330,36 @@ async function assistantMutation(path, body, identity, { retryToken = true } = {
     throw error;
   }
   return payload;
+}
+
+async function assistantGet(path) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(await assistantUrl(path), {
+      credentials: "include", cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) throw new Error(payload?.message || `助手报表服务 HTTP ${response.status}`);
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function monitorReportTasks() {
+  try {
+    const identity = await getAssistantIdentity({ force: true });
+    const result = await pollReportTasks({ assistantGet, identity });
+    await chrome.storage.local.set({ [REPORT_TASK_MONITOR_KEY]: { ...result, checkedAt: new Date().toISOString() } });
+  } catch (error) {
+    await chrome.storage.local.set({
+      [REPORT_TASK_MONITOR_KEY]: {
+        code: "REPORT_TASK_POLL_FAILED", tasks: [], blocked: [],
+        message: String(error?.message || error).slice(0, 300), checkedAt: new Date().toISOString(),
+      },
+    });
+  }
 }
 
 async function getDutyNotifications(identity, { force = false } = {}) {
@@ -1537,6 +1570,7 @@ async function initialize() {
   await recoverInterruptedResponsePlans();
   chrome.alarms.create("flush-pending", { periodInMinutes: 1 });
   chrome.alarms.create(HEARTBEAT_ALARM, { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 });
+  chrome.alarms.create(REPORT_TASK_ALARM, { delayInMinutes: 1, periodInMinutes: 1 });
   const keepaliveAlarm = await chrome.alarms.get(KEEPALIVE_ALARM);
   if (!keepaliveAlarm) {
     try { await scheduleNextKeepalive(await fetchKeepalivePolicy()); }
@@ -1568,6 +1602,7 @@ chrome.runtime.onStartup.addListener(() => { void initialize(); });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "flush-pending") void Promise.allSettled([flushPending(), pruneSensitiveCache()]);
   if (alarm.name === HEARTBEAT_ALARM) void sendDeviceHeartbeat().catch((error) => audit("DEVICE_HEARTBEAT_FAILED", { error: String(error?.message || error).slice(0, 300) }));
+  if (alarm.name === REPORT_TASK_ALARM) void monitorReportTasks();
   if (alarm.name === KEEPALIVE_ALARM) void performAuthorizedKeepalive();
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
