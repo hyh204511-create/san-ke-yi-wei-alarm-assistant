@@ -1,3 +1,4 @@
+from datetime import timedelta
 import json
 
 from django.contrib.auth import get_user_model
@@ -326,6 +327,74 @@ class SessionKeepaliveGovernanceTests(TestCase):
         self.assertEqual(device.platform_identity_status, "UNVERIFIED")
         self.assertEqual(device.platform_visible_scope_hash, "a" * 64)
         self.assertEqual(device.platform_permission_summary, {"alarm.read": True})
+
+    def test_operator_explicitly_verifies_matching_realtime_platform_context(self):
+        RoleAssignment.objects.filter(user=self.operator, is_active=True).update(is_active=False)
+        assign_role(user=self.operator, role=RoleAssignment.Role.MONITOR_OPERATOR, assigned_by=self.admin)
+        self.client.force_login(self.operator)
+        heartbeat = self.post_action_json(reverse("assistant-device-heartbeat-api"), {
+            "deviceId": "device-platform-action", "extensionVersion": "0.6.0",
+            "platformAccountRef": "platform-ref-keepalive", "sessionStatus": "AUTHENTICATED",
+            "route": "#/vehicle-monitor/real-time", "platformContext": {
+                "displayName": "省平台值班身份", "identityStatus": "UNVERIFIED",
+                "visibleScopeHash": "b" * 64, "permissionSummary": {"alarm.read": True},
+            },
+        })
+        self.assertEqual(heartbeat.status_code, 200)
+        verified = self.post_action_json(reverse("assistant-device-verify-platform-action-api"), {
+            "deviceId": "device-platform-action",
+            "platformDisplayName": "省平台值班身份",
+            "route": "#/vehicle-monitor/real-time",
+        })
+        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(verified.json()["data"]["platformIdentityStatus"], "VERIFIED")
+        self.assertEqual(
+            DeviceRegistration.objects.get(device_id="device-platform-action").platform_identity_status,
+            "VERIFIED",
+        )
+
+    def test_platform_action_context_rejects_identity_mismatch(self):
+        RoleAssignment.objects.filter(user=self.operator, is_active=True).update(is_active=False)
+        assign_role(user=self.operator, role=RoleAssignment.Role.MONITOR_OPERATOR, assigned_by=self.admin)
+        self.client.force_login(self.operator)
+        self.post_action_json(reverse("assistant-device-heartbeat-api"), {
+            "deviceId": "device-platform-mismatch", "extensionVersion": "0.6.0",
+            "platformAccountRef": "platform-ref-keepalive", "sessionStatus": "AUTHENTICATED",
+            "route": "#/vehicle-monitor/real-time", "platformContext": {
+                "displayName": "省平台值班身份", "identityStatus": "UNVERIFIED",
+                "visibleScopeHash": "c" * 64, "permissionSummary": {"alarm.read": True},
+            },
+        })
+        rejected = self.post_action_json(reverse("assistant-device-verify-platform-action-api"), {
+            "deviceId": "device-platform-mismatch",
+            "platformDisplayName": "其他身份",
+            "route": "#/vehicle-monitor/real-time",
+        })
+        self.assertEqual(rejected.status_code, 409)
+        self.assertEqual(rejected.json()["code"], "PLATFORM_IDENTITY_MISMATCH")
+
+    def test_platform_action_context_rejects_stale_device_heartbeat(self):
+        RoleAssignment.objects.filter(user=self.operator, is_active=True).update(is_active=False)
+        assign_role(user=self.operator, role=RoleAssignment.Role.MONITOR_OPERATOR, assigned_by=self.admin)
+        self.client.force_login(self.operator)
+        self.post_action_json(reverse("assistant-device-heartbeat-api"), {
+            "deviceId": "device-platform-stale", "extensionVersion": "0.6.0",
+            "platformAccountRef": "platform-ref-keepalive", "sessionStatus": "AUTHENTICATED",
+            "route": "#/vehicle-monitor/real-time", "platformContext": {
+                "displayName": "省平台值班身份", "identityStatus": "UNVERIFIED",
+                "visibleScopeHash": "d" * 64, "permissionSummary": {"alarm.read": True},
+            },
+        })
+        DeviceRegistration.objects.filter(device_id="device-platform-stale").update(
+            last_seen_at=timezone.now() - timedelta(minutes=3),
+        )
+        rejected = self.post_action_json(reverse("assistant-device-verify-platform-action-api"), {
+            "deviceId": "device-platform-stale",
+            "platformDisplayName": "省平台值班身份",
+            "route": "#/vehicle-monitor/real-time",
+        })
+        self.assertEqual(rejected.status_code, 409)
+        self.assertEqual(rejected.json()["code"], "DEVICE_HEARTBEAT_STALE")
 
     def test_device_heartbeat_rejects_raw_platform_identity_fields(self):
         self.client.force_login(self.operator)

@@ -389,6 +389,30 @@ def device_heartbeat_api(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 @api_view
+def verify_platform_action_context_api(request):
+    verify_action_token(request)
+    data = json_payload(request)
+    allowed = {"deviceId", "platformDisplayName", "route"}
+    if set(data) - allowed:
+        raise services.GovernanceError("平台动作身份核验包含未允许字段", "INVALID_PLATFORM_CONTEXT", 422)
+    device = services.verify_platform_action_context(
+        actor=request.user,
+        device_id=data.get("deviceId"),
+        platform_display_name=data.get("platformDisplayName"),
+        route=data.get("route"),
+        request_id=getattr(request, "request_id", ""),
+    )
+    return JsonResponse({
+        "ok": True,
+        "code": "OK",
+        "message": "当前省平台动作身份已核验",
+        "data": {"deviceId": device.device_id, "platformIdentityStatus": device.platform_identity_status},
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@api_view
 def session_keepalive_audit_api(request):
     verify_action_token(request)
     audit = services.record_keepalive_audit(actor=request.user, payload=json_payload(request))

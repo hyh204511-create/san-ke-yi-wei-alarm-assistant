@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 from django.db import transaction
@@ -242,6 +242,43 @@ def register_device_heartbeat(*, actor, device_id, extension_version, platform_a
         device.save()
     else:
         device = DeviceRegistration.objects.create(device_id=device_id, **defaults)
+    return device
+
+
+@transaction.atomic
+def verify_platform_action_context(*, actor, device_id, platform_display_name, route, request_id=""):
+    require_permission(actor, "action.execute")
+    if not active_shift_for_user(actor):
+        raise GovernanceError("请先认领当前值班班次", "ACTIVE_SHIFT_REQUIRED", 409)
+    device_id = str(device_id or "").strip()
+    device = DeviceRegistration.objects.select_for_update().filter(
+        device_id=device_id, user=actor, is_active=True,
+    ).first()
+    if not device:
+        raise GovernanceError("当前动作设备尚未登记", "DEVICE_NOT_REGISTERED", 409)
+    if device.last_seen_at < timezone.now() - timedelta(minutes=2):
+        raise GovernanceError("当前动作设备心跳已过期", "DEVICE_HEARTBEAT_STALE", 409)
+    expected_route = safe_platform_route(route)
+    if expected_route != "#/vehicle-monitor/real-time" or device.last_route != expected_route:
+        raise GovernanceError("省平台当前页面不是实时监控页", "PLATFORM_ROUTE_REQUIRED", 409)
+    display_name = str(platform_display_name or "").strip()
+    if not display_name or display_name != device.platform_display_name:
+        raise GovernanceError("省平台显示身份与最近心跳不一致", "PLATFORM_IDENTITY_MISMATCH", 409)
+    if device.session_status != "AUTHENTICATED":
+        raise GovernanceError("省平台会话尚未确认登录", "PLATFORM_SESSION_REQUIRED", 409)
+    device.platform_identity_status = "VERIFIED"
+    device.platform_identity_observed_at = timezone.now()
+    device.save(update_fields=["platform_identity_status", "platform_identity_observed_at", "updated_at"])
+    AuditEvent.objects.create(
+        actor=actor,
+        event_type="PLATFORM_ACTION_CONTEXT_VERIFIED",
+        object_type="DEVICE_REGISTRATION",
+        object_id=device.device_id,
+        role_snapshot=active_roles(actor),
+        enterprise_scope_snapshot=enterprise_scope_for_user(actor),
+        detail={"route": expected_route, "displayNameMatched": True},
+        request_id=request_id,
+    )
     return device
 
 

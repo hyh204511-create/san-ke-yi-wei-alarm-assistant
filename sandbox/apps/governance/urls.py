@@ -25,4 +25,5 @@ urlpatterns = [
     path("governance/api/voice-interaction/policy", views.voice_interaction_policy_api, name="assistant-voice-interaction-policy-api"),
     path("governance/api/session-keepalive/audits", views.session_keepalive_audit_api, name="assistant-session-keepalive-audit-api"),
     path("governance/api/devices/heartbeat", views.device_heartbeat_api, name="assistant-device-heartbeat-api"),
+    path("governance/api/devices/verify-platform-action", views.verify_platform_action_context_api, name="assistant-device-verify-platform-action-api"),
 ]
