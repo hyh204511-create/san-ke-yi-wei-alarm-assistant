@@ -1,0 +1,17 @@
+{
+  "templates": {
+    "ALARM_THREE_SHEET_V1": {
+      "file": "ALARM_THREE_SHEET_V1.xlsx",
+      "sha256": "86cd4620be9be7bebee6c81770770a303c3d7a859b08e859e9ceba9f31a7ec718",
+      "sheets": ["处置率报表", "处理率报表", "报警查询报表"],
+      "sanitized": true
+    },
+    "VEHICLE_MONITOR_DAILY_V1": {
+      "file": "VEHICLE_MONITOR_DAILY_V1.xlsx",
+      "sha256": "2d6454a7847d21d55f953c7515e25bbe4d55e235e8b060fae81a71ee9f1cbce8",
+      "sheets": ["车辆动态监控日报表"],
+      "sanitized": true
+    }
+  }
+}
+

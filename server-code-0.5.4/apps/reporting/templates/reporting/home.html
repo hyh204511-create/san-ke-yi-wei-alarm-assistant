@@ -18,13 +18,20 @@
 </head>
 <body>
   <header>
-    <small>ENTERPRISE DATA / DAILY &amp; MONTHLY SNAPSHOTS</small>
+    <small>FIVE-SOURCE REPORT AUTOMATION / AUDITABLE XLSX</small>
     <h1>数据与报表中心</h1>
-    <p>日报、月报和导出与值班插件分离。每份报表锁定企业、统计周期、北京时间口径、数据截止时间和版本；迟到数据或口径更正会生成新版本，不覆盖历史。</p>
+    <p>五来源任务由 Django 冻结周期和筛选条件，插件只在已登录省平台会话内执行已审核白名单接口。缺页、字段变化或范围不明会停在“数据不完整”，不会生成伪完整报表。</p>
     <a href="/assistant/">身份中心</a> · <a href="/assistant/disposals/">人工处置</a>
   </header>
   <main class="wrap">
     {% if "report.generate" in permissions %}
+    <h2>新建五来源报表任务</h2>
+    <form class="generator" method="post" action="/assistant/reports/actions/tasks/create">
+      {% csrf_token %}
+      <select name="report_type"><option value="ALARM_DAILY">企业报警日报</option><option value="ALARM_WEEKLY">企业报警周报</option><option value="ALARM_MONTHLY">企业报警月报</option><option value="VEHICLE_MONITOR_DAILY">车辆动态监控日报</option></select>
+      <input type="date" name="period_start" required><input type="date" name="period_end" required><button class="primary">创建受控取数任务</button>
+    </form>
+    <h2>旧版报警事实快照</h2>
     <form class="generator" method="post" action="/assistant/reports/actions/generate">
       {% csrf_token %}
       <select name="enterprise_id" required>{% for scope in enterprise_scopes %}<option value="{{ scope.enterpriseId }}">{{ scope.enterpriseName }}</option>{% endfor %}</select>
@@ -32,6 +39,24 @@
       <input name="period_value" placeholder="2026-07-19 或 2026-07" required><input name="correction_reason" placeholder="更正版时填写原因"><button class="primary">生成报表草稿</button>
     </form>
     {% endif %}
+    <h2>五来源任务</h2>
+    <section class="grid">
+      {% for task in tasks %}
+      <article class="report">
+        <div class="head"><div><div class="title">{{ task.get_report_type_display }}</div><b>{{ task.period_start }} 至 {{ task.period_end }}</b></div><span class="status status-{{ task.status }}">{{ task.get_status_display }}</span></div>
+        <p>模板：{{ task.template_version }}<br>关键异常：{{ task.critical_issue_count }}<br>数据截止：{{ task.data_cutoff_at }}</p>
+        {% if task.failure_reason %}<p class="positive-note">{{ task.failure_code }}：{{ task.failure_reason }}</p>{% endif %}
+        <div class="actions">
+          {% if task.status == "REVIEW_REQUIRED" and "report.publish" in permissions %}
+          <form method="post" action="/assistant/reports/actions/tasks/{{ task.public_id }}/approve">{% csrf_token %}<input name="note" placeholder="审核说明"><button class="primary">审核通过</button></form>
+          <form method="post" action="/assistant/reports/actions/tasks/{{ task.public_id }}/reject">{% csrf_token %}<input name="note" placeholder="驳回原因" required><button>驳回</button></form>
+          {% endif %}
+          {% if task.status == "APPROVED" and "export.masked" in permissions %}<form method="post" action="/assistant/reports/actions/tasks/{{ task.public_id }}/bundle">{% csrf_token %}<input name="purpose" placeholder="下载用途" required><button>生成企业报表ZIP</button></form>{% endif %}
+        </div>
+      </article>
+      {% empty %}<article class="report">尚无五来源任务。真实接口未审核进入白名单前，任务会安全停在等待省平台。</article>{% endfor %}
+    </section>
+    <h2>旧版快照</h2>
     <section class="grid">
       {% for report in snapshots %}
       <article class="report">

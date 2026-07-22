@@ -922,8 +922,14 @@ def uuid_safe():
 @transaction.atomic
 def record_download(*, actor, job):
     require_reporting_permission(actor, "export.masked")
-    job = ExportJob.objects.select_for_update().select_related("report_snapshot__enterprise").get(pk=job.pk)
-    require_scope(actor, job.report_snapshot.enterprise)
+    job = ExportJob.objects.select_for_update().select_related("report_snapshot__enterprise", "report_task").get(pk=job.pk)
+    if job.report_snapshot_id:
+        require_scope(actor, job.report_snapshot.enterprise)
+    else:
+        allowed = enterprise_scope_ids_for_user(actor)
+        task_enterprises = set(job.report_task.snapshots.values_list("enterprise_id", flat=True))
+        if not task_enterprises.issubset(allowed):
+            raise ReportingError("无权下载该任务的企业报表", "ENTERPRISE_SCOPE_DENIED", 403)
     if job.status != ExportJob.Status.READY or job.expires_at <= timezone.now():
         if job.status == ExportJob.Status.READY:
             job.status = ExportJob.Status.EXPIRED

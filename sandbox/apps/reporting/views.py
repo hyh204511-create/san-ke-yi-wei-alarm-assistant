@@ -5,6 +5,7 @@ from functools import wraps
 from io import BytesIO
 
 from django.http import FileResponse, JsonResponse
+from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
@@ -13,17 +14,17 @@ from apps.governance.action_tokens import verify_action_token
 from apps.governance.models import EnterpriseScope
 from apps.governance.services import GovernanceError, active_roles, enterprise_scope_for_user, enterprise_scope_ids_for_user, permissions_for_roles
 
-from . import services
-from .models import ActionLease, DutyNotification, ExportJob, ReportSnapshot, VoiceInteractionEvidence
+from . import report_tasks, services
+from .models import ActionLease, DutyNotification, ExportJob, ReportSnapshot, ReportTask, VoiceInteractionEvidence
 
 logger = logging.getLogger("assistant.reporting")
 
 
-def payload(request):
+def payload(request, max_bytes=2 * 1024 * 1024):
     if not request.body:
         return {}
-    if len(request.body) > 2 * 1024 * 1024:
-        raise services.ReportingError("请求体超过2MB限制", "PAYLOAD_TOO_LARGE", 413)
+    if len(request.body) > max_bytes:
+        raise services.ReportingError("请求体超过允许大小", "PAYLOAD_TOO_LARGE", 413)
     try: value = json.loads(request.body)
     except json.JSONDecodeError as exc: raise services.ReportingError("请求体不是有效JSON", "INVALID_JSON", 400) from exc
     if not isinstance(value, dict): raise services.ReportingError("请求体必须是JSON对象", "INVALID_JSON", 400)
@@ -42,7 +43,7 @@ def snapshot_for(value):
 
 
 def export_for(value):
-    job = ExportJob.objects.select_related("report_snapshot__enterprise", "created_by__assistant_profile").filter(public_id=uuid_value(value, "导出任务")).first()
+    job = ExportJob.objects.select_related("report_snapshot__enterprise", "report_task", "created_by__assistant_profile").filter(public_id=uuid_value(value, "导出任务")).first()
     if not job: raise services.ReportingError("导出任务不存在", "EXPORT_NOT_FOUND", 404)
     return job
 
@@ -52,6 +53,18 @@ def enterprise_for(request, value):
     if not enterprise: raise services.ReportingError("企业不存在", "ENTERPRISE_NOT_FOUND", 404)
     services.require_scope(request.user, enterprise)
     return enterprise
+
+
+def task_for(value, actor=None):
+    task = ReportTask.objects.select_related("requested_by__assistant_profile", "claimed_by__assistant_profile", "reviewed_by__assistant_profile").filter(public_id=uuid_value(value, "报表任务")).first()
+    if not task:
+        raise services.ReportingError("报表任务不存在", "REPORT_TASK_NOT_FOUND", 404)
+    if actor and task.requested_by_id != actor.pk:
+        permissions = permissions_for_roles(active_roles(actor))
+        collector_access = "report.collect" in permissions and (task.claimed_by_id in {None, actor.pk})
+        if "report.publish" not in permissions and not collector_access:
+            raise services.ReportingError("无权访问该报表任务", "REPORT_TASK_SCOPE_DENIED", 403)
+    return task
 
 
 def api_view(handler):
@@ -90,6 +103,8 @@ def ingest_api_view(handler):
 def snapshot_data(snapshot):
     return {
         "reportId": str(snapshot.public_id), "enterpriseId": str(snapshot.enterprise.public_id), "enterpriseName": snapshot.enterprise.name,
+        "taskId": str(snapshot.task.public_id) if snapshot.task_id else None, "reportType": snapshot.report_type,
+        "templateVersion": snapshot.template_version, "reviewStatus": snapshot.review_status,
         "periodType": snapshot.period_type, "periodStart": snapshot.period_start.isoformat(), "periodEnd": snapshot.period_end.isoformat(),
         "version": snapshot.version, "status": snapshot.status, "metrics": snapshot.metrics, "parameters": snapshot.parameters,
         "dataCutoffAt": snapshot.data_cutoff_at.isoformat(), "correctionReason": snapshot.correction_reason,
@@ -99,10 +114,39 @@ def snapshot_data(snapshot):
 
 def export_data(job):
     return {
-        "exportId": str(job.public_id), "reportId": str(job.report_snapshot.public_id), "format": job.format, "status": job.status,
+        "exportId": str(job.public_id), "reportId": str(job.report_snapshot.public_id) if job.report_snapshot_id else None,
+        "taskId": str(job.report_task.public_id) if job.report_task_id else None, "format": job.format, "status": job.status,
         "purpose": job.purpose, "fileName": job.file_name, "fileHash": job.file_sha256, "fileSize": job.file_size,
         "expiresAt": job.expires_at.isoformat(), "downloadCount": job.download_count,
     }
+
+
+def task_data(task, *, detail=False, include_lease=False):
+    data = {
+        "taskId": str(task.public_id), "reportType": task.report_type,
+        "periodStart": task.period_start.isoformat(), "periodEnd": task.period_end.isoformat(),
+        "targetDate": task.target_date.isoformat() if task.target_date else None,
+        "templateVersion": task.template_version, "status": task.status,
+        "requiredSourceTypes": task.required_source_types,
+        "criticalIssueCount": task.critical_issue_count, "failureCode": task.failure_code or None,
+        "failureReason": task.failure_reason or None, "dataCutoffAt": task.data_cutoff_at.isoformat(),
+        "reviewedAt": task.reviewed_at.isoformat() if task.reviewed_at else None, "reviewNote": task.review_note or None,
+        "claimedBy": task.claimed_by.assistant_profile.display_name if task.claimed_by_id else None,
+    }
+    if detail:
+        data["querySpec"] = task.query_spec
+        data["validationSummary"] = task.validation_summary
+        data["sources"] = [{
+            "sourceType": batch.source_type, "contractVersion": batch.contract_version,
+            "queryHash": batch.query_hash, "fieldSignature": batch.field_signature or None,
+            "status": batch.status, "totalPages": batch.total_pages, "totalRows": batch.total_rows,
+            "receivedPages": batch.received_pages, "receivedRows": batch.received_rows,
+        } for batch in task.source_batches.order_by("source_type")]
+        data["snapshots"] = [snapshot_data(item) for item in task.snapshots.select_related("enterprise", "generated_by__assistant_profile")]
+    if include_lease:
+        data["leaseToken"] = getattr(task, "_plain_lease_token", None)
+        data["leaseExpiresAt"] = task.lease_expires_at.isoformat() if task.lease_expires_at else None
+    return data
 
 
 def action_lease_data(lease, *, include_token=False):
@@ -137,15 +181,120 @@ def voice_evidence_data(record, *, include_transcript=False):
     return services.voice_evidence_data(record, include_transcript=include_transcript)
 
 
+@require_http_methods(["GET", "POST"])
+@api_view
+def report_tasks_api(request):
+    if request.method == "GET":
+        services.require_reporting_permission(request.user, "report.view")
+        permissions = permissions_for_roles(active_roles(request.user))
+        tasks = ReportTask.objects.all()
+        if "report.publish" not in permissions:
+            scope = Q(requested_by=request.user)
+            if "report.collect" in permissions:
+                scope |= Q(claimed_by=request.user) | Q(claimed_by__isnull=True, status=ReportTask.Status.WAITING_PLATFORM)
+            tasks = tasks.filter(scope)
+        tasks = tasks.select_related("requested_by__assistant_profile", "claimed_by__assistant_profile", "reviewed_by__assistant_profile").order_by("-created_at")[:100]
+        return JsonResponse({"ok": True, "data": [task_data(item) for item in tasks], "limit": 100}, json_dumps_params={"ensure_ascii": False})
+    data = payload(request)
+    task = report_tasks.create_report_task(
+        actor=request.user, report_type=data.get("reportType"), period_start=data.get("periodStart"),
+        period_end=data.get("periodEnd"), data_cutoff_at=data.get("dataCutoffAt"),
+    )
+    return JsonResponse({"ok": True, "data": task_data(task, detail=True)}, status=201, json_dumps_params={"ensure_ascii": False})
+
+
+@require_GET
+@api_view
+def report_task_detail_api(request, task_id):
+    services.require_reporting_permission(request.user, "report.view")
+    return JsonResponse({"ok": True, "data": task_data(task_for(task_id, request.user), detail=True)}, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@ingest_api_view
+def report_task_claim_api(request, task_id):
+    data = payload(request)
+    task = report_tasks.claim_report_task(
+        actor=request.user, task=task_for(task_id, request.user), device_id=data.get("deviceId"), duration_seconds=data.get("durationSeconds", 600),
+    )
+    return JsonResponse({"ok": True, "data": task_data(task, detail=True, include_lease=True)}, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@ingest_api_view
+def report_source_page_api(request, task_id, source_type):
+    data = payload(request, max_bytes=10 * 1024 * 1024)
+    page, created = report_tasks.upload_source_page(
+        actor=request.user, task=task_for(task_id, request.user), source_type=source_type,
+        page_number=data.get("pageNumber"), query_hash=data.get("queryHash"), field_signature=data.get("fieldSignature"),
+        rows=data.get("rows"), device_id=data.get("deviceId"), lease_token=data.get("leaseToken"),
+    )
+    return JsonResponse({"ok": True, "data": {"pageId": page.pk, "pageNumber": page.page_number, "rowCount": page.row_count, "created": created}}, status=201 if created else 200)
+
+
+@require_http_methods(["POST"])
+@ingest_api_view
+def report_source_complete_api(request, task_id, source_type):
+    data = payload(request)
+    batch, problems = report_tasks.complete_source_batch(
+        actor=request.user, task=task_for(task_id, request.user), source_type=source_type,
+        total_pages=data.get("totalPages"), total_rows=data.get("totalRows"), field_signature=data.get("fieldSignature"),
+        device_id=data.get("deviceId"), lease_token=data.get("leaseToken"),
+    )
+    return JsonResponse({"ok": not problems, "data": {"sourceType": batch.source_type, "status": batch.status, "problems": problems}}, status=409 if problems else 200, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@ingest_api_view
+def report_task_finalize_api(request, task_id):
+    data = payload(request)
+    task = task_for(task_id, request.user)
+    report_tasks.verify_task_lease(task, request.user, data.get("deviceId"), data.get("leaseToken"))
+    task = report_tasks.finalize_report_task(actor=request.user, task=task)
+    return JsonResponse({"ok": True, "data": task_data(task, detail=True)}, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@api_view
+def report_task_review_api(request, task_id):
+    data = payload(request)
+    task = report_tasks.review_report_task(
+        actor=request.user, task=task_for(task_id, request.user), approve=data.get("decision") == "APPROVE", note=data.get("note"),
+    )
+    return JsonResponse({"ok": True, "data": task_data(task, detail=True)}, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@api_view
+def report_task_bundle_api(request, task_id):
+    data = payload(request)
+    job = report_tasks.create_task_bundle_export(actor=request.user, task=task_for(task_id, request.user), purpose=data.get("purpose"))
+    return JsonResponse({"ok": True, "data": export_data(job)}, status=201, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@api_view
+def report_snapshot_task_export_api(request, report_id):
+    data = payload(request)
+    job = report_tasks.create_snapshot_export(actor=request.user, snapshot=snapshot_for(report_id), purpose=data.get("purpose"))
+    return JsonResponse({"ok": True, "data": export_data(job)}, status=201, json_dumps_params={"ensure_ascii": False})
+
+
 @require_GET
 def home(request):
     profile = getattr(request.user, "assistant_profile", None) if request.user.is_authenticated else None
     if not profile or not profile.is_active: return redirect("assistant-login")
     permissions = permissions_for_roles(active_roles(request.user))
     if "report.view" not in permissions: return render(request, "governance/access_denied.html", status=403)
+    task_scope = Q(requested_by=request.user)
+    if "report.collect" in permissions:
+        task_scope |= Q(claimed_by=request.user) | Q(claimed_by__isnull=True, status=ReportTask.Status.WAITING_PLATFORM)
+    if "report.publish" in permissions:
+        task_scope = Q()
+    tasks = ReportTask.objects.filter(task_scope).select_related("requested_by__assistant_profile", "claimed_by__assistant_profile", "reviewed_by__assistant_profile")[:100]
     snapshots = ReportSnapshot.objects.filter(enterprise_id__in=enterprise_scope_ids_for_user(request.user)).select_related("enterprise", "generated_by__assistant_profile", "published_by__assistant_profile")[:100]
-    exports = ExportJob.objects.filter(report_snapshot__enterprise_id__in=enterprise_scope_ids_for_user(request.user)).select_related("report_snapshot__enterprise")[:50]
-    return render(request, "reporting/home.html", {"profile": profile, "permissions": permissions, "enterprise_scopes": enterprise_scope_for_user(request.user), "snapshots": snapshots, "exports": exports})
+    exports = ExportJob.objects.filter(created_by=request.user).select_related("report_snapshot__enterprise", "report_task")[:50]
+    return render(request, "reporting/home.html", {"profile": profile, "permissions": permissions, "enterprise_scopes": enterprise_scope_for_user(request.user), "tasks": tasks, "snapshots": snapshots, "exports": exports})
 
 
 @require_http_methods(["POST"])
@@ -273,7 +422,10 @@ def export_api(request, report_id):
 @api_view
 def download_api(request, export_id):
     job, content = services.record_download(actor=request.user, job=export_for(export_id))
-    content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if job.format == "XLSX" else "application/pdf"
+    content_type = {
+        "XLSX": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ZIP": "application/zip",
+    }.get(job.format, "application/pdf")
     response = FileResponse(BytesIO(content), content_type=content_type, as_attachment=True, filename=job.file_name)
     response["Cache-Control"] = "no-store"
     response["X-Content-SHA256"] = job.file_sha256
@@ -307,3 +459,40 @@ def publish_page(request, report_id): return page_action(request, "publish", rep
 
 @require_http_methods(["POST"])
 def export_page(request, report_id): return page_action(request, "export", report_id)
+
+
+def task_page_action(request, operation, task_id=None):
+    profile = getattr(request.user, "assistant_profile", None) if request.user.is_authenticated else None
+    if not profile or not profile.is_active:
+        return redirect("assistant-login")
+    try:
+        if operation == "create":
+            report_tasks.create_report_task(
+                actor=request.user, report_type=request.POST.get("report_type"),
+                period_start=request.POST.get("period_start"), period_end=request.POST.get("period_end"),
+            )
+        elif operation == "approve":
+            report_tasks.review_report_task(actor=request.user, task=task_for(task_id, request.user), approve=True, note=request.POST.get("note"))
+        elif operation == "reject":
+            report_tasks.review_report_task(actor=request.user, task=task_for(task_id, request.user), approve=False, note=request.POST.get("note"))
+        elif operation == "bundle":
+            report_tasks.create_task_bundle_export(actor=request.user, task=task_for(task_id, request.user), purpose=request.POST.get("purpose"))
+        return redirect("reporting-home")
+    except services.ReportingError as exc:
+        return render(request, "rule_governance/error.html", {"error": str(exc), "code": exc.code, "permissions": permissions_for_roles(active_roles(request.user))}, status=exc.status)
+
+
+@require_http_methods(["POST"])
+def task_create_page(request): return task_page_action(request, "create")
+
+
+@require_http_methods(["POST"])
+def task_approve_page(request, task_id): return task_page_action(request, "approve", task_id)
+
+
+@require_http_methods(["POST"])
+def task_reject_page(request, task_id): return task_page_action(request, "reject", task_id)
+
+
+@require_http_methods(["POST"])
+def task_bundle_page(request, task_id): return task_page_action(request, "bundle", task_id)
