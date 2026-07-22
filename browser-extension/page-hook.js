@@ -26,7 +26,30 @@
     ["check-post", "/base-service/checkPost/list", "check-post"],
     ["alarm-center-discovery", "/alarm-service/alarm/center/", "discovery"]
   ];
+  const REPORT_SOURCE_RULES = Object.freeze([
+    Object.freeze({ sourceType: "TRACK_COMPLETENESS", name: "report-track-completeness-discovery", labels: ["轨迹完整率明细"] }),
+    Object.freeze({ sourceType: "VEHICLE_BASE_INFO", name: "report-vehicle-base-discovery", labels: ["车辆基础信息"] }),
+    Object.freeze({ sourceType: "ALARM_DISPOSAL_RATE", name: "report-alarm-disposal-discovery", labels: ["报警处置率", "处置率报表"] }),
+    Object.freeze({ sourceType: "ALARM_PROCESSING_RATE", name: "report-alarm-processing-discovery", labels: ["报警处理率", "处理率报表"] }),
+    Object.freeze({ sourceType: "ALARM_CENTER", name: "report-alarm-center-discovery", labels: ["报警查询报表", "报警中心数据"] }),
+  ]);
   const SENSITIVE_KEY = /authorization|cookie|credential|password|secret|session|token|mobile|phone|contactInformation|driverNumber|idCard/i;
+
+  function activeReportSource() {
+    try {
+      const nodes = [...document.querySelectorAll(
+        ".is-active,.active,.selected,[aria-selected='true'],[aria-current='page'],.breadcrumb,.el-breadcrumb,.ant-breadcrumb,h1,h2"
+      )];
+      const visible = nodes
+        .filter((node) => !node.getAttribute?.("aria-hidden"))
+        .map((node) => String(node.textContent || "").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .join(" | ");
+      return REPORT_SOURCE_RULES.find((rule) => rule.labels.some((label) => visible.includes(label))) || null;
+    } catch {
+      return null;
+    }
+  }
 
   function matchRule(url, view = {}) {
     const path = new URL(String(url), location.href).pathname.replace(/^\/api/, "");
@@ -46,7 +69,11 @@
       return { name: realtimeRoute ? "realtime-alarms" : prewarningRoute ? "prewarning-query" : "alarm-query", category: "alarm", path };
     }
     const rule = RULES.find(([, fragment]) => path.includes(fragment));
-    return rule ? { name: rule[0], category: rule[2], path } : null;
+    if (rule) return { name: rule[0], category: rule[2], path };
+    const reportSource = activeReportSource();
+    return reportSource && path.startsWith("/")
+      ? { name: reportSource.name, category: "report-discovery", sourceType: reportSource.sourceType, path }
+      : null;
   }
 
   function activeMonitorAlarmTab(route = location.hash || "") {
@@ -291,6 +318,7 @@
           path: responseRule.path,
           matchedRule: responseRule.name,
           category: responseRule.category,
+          reportSourceType: responseRule.sourceType || null,
           startedAt: new Date(startedAt).toISOString(),
           durationMs: Math.round(performance.now() - startedMark),
           status: response.status,
@@ -337,6 +365,7 @@
         path: rule.path,
         matchedRule: rule.name,
         category: rule.category,
+        reportSourceType: rule.sourceType || null,
         startedAt: new Date(startedAt).toISOString(),
         durationMs: Math.round(performance.now() - startedMark),
         status: 0,
@@ -407,6 +436,7 @@
             path: responseRule.path,
             matchedRule: responseRule.name,
             category: responseRule.category,
+            reportSourceType: responseRule.sourceType || null,
             startedAt: new Date(startedAt).toISOString(),
             durationMs: Math.round(performance.now() - startedMark),
             status: this.status,

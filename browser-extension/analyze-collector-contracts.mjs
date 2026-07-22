@@ -66,6 +66,7 @@ export async function analyzeCollectorContracts(dataDir, dataKey) {
       const key = `${rule}|${capture.method || "UNKNOWN"}|${endpointPath}`;
       if (!contracts.has(key)) contracts.set(key, {
         matchedRule: rule,
+        reportSourceType: capture.reportSourceType || null,
         method: String(capture.method || "UNKNOWN"),
         endpointPath,
         count: 0,
@@ -80,6 +81,7 @@ export async function analyzeCollectorContracts(dataDir, dataKey) {
         enumValues: {},
       });
       const contract = contracts.get(key);
+      if (!contract.reportSourceType && capture.reportSourceType) contract.reportSourceType = capture.reportSourceType;
       contract.count += 1;
       if (capture.isAlarm) contract.alarmCaptureCount += 1;
       const alarmRows = extractAlarmCandidates(capture);

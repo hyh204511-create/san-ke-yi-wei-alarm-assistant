@@ -40,3 +40,19 @@ test("contract analyzer normalizes sensitive dynamic identifiers", async () => {
   assert.match(output, /\{dynamicKey\}/);
   assert.doesNotMatch(output, /1195586082209550336|SECRET/);
 });
+
+test("contract analyzer preserves sanitized report source identity", async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "hn-report-contracts-"));
+  const key = Buffer.alloc(32, 6);
+  const capture = {
+    capturedAt: "2026-07-23T01:00:00Z", matchedRule: "report-track-completeness-discovery",
+    reportSourceType: "TRACK_COMPLETENESS", method: "POST",
+    url: "https://example.test/api/report-service/track/list", route: "#/assessment/detail", status: 200,
+    request: { body: { pageNum: 1, pageSize: 20, targetDate: "synthetic-date" } },
+    response: { body: { data: [{ vehicleId: "SECRET", completeness: "100%" }], total: 1, totalPage: 1 } },
+  };
+  await writeFile(path.join(dataDir, "captures-2026-07-23.encjsonl"), `${encryptJsonLine(capture, key)}\n`, "utf8");
+  const summary = await analyzeCollectorContracts(dataDir, key);
+  assert.equal(summary.contracts[0].reportSourceType, "TRACK_COMPLETENESS");
+  assert.equal(JSON.stringify(summary).includes("SECRET"), false);
+});

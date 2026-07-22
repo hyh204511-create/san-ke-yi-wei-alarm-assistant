@@ -140,6 +140,28 @@ test("unknown alarm-center endpoints are captured as discovery only", async () =
   assert.doesNotMatch(source, /category: record\.category === "discovery" \? "alarm"/);
 });
 
+test("五来源页面只读识别未知接口并保留来源类型", async () => {
+  const cases = [
+    ["轨迹完整率明细", "TRACK_COMPLETENESS", "report-track-completeness-discovery"],
+    ["车辆基础信息", "VEHICLE_BASE_INFO", "report-vehicle-base-discovery"],
+    ["处置率报表", "ALARM_DISPOSAL_RATE", "report-alarm-disposal-discovery"],
+    ["处理率报表", "ALARM_PROCESSING_RATE", "report-alarm-processing-discovery"],
+    ["报警查询报表", "ALARM_CENTER", "report-alarm-center-discovery"],
+  ];
+  for (const [label, sourceType, matchedRule] of cases) {
+    const { context, messages } = makeContext();
+    context.document.querySelectorAll = () => [{ className: "is-active", textContent: label, getAttribute: () => null }];
+    await context.fetch("https://zuul-2k1v.hnznjg.cn:7443/api/report-service/unknown/list", {
+      method: "POST", body: JSON.stringify({ pageNum: 1, pageSize: 20 }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].record.category, "report-discovery");
+    assert.equal(messages[0].record.reportSourceType, sourceType);
+    assert.equal(messages[0].record.matchedRule, matchedRule);
+  }
+});
+
 test("alarmQueryList 根据页面路由区分实时报警、预报警和历史查询", async () => {
   const { context, messages } = makeContext();
   context.location.hash = "#/alarm-center/alarm-verification";

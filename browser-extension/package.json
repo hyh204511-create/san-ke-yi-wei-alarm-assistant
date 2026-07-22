@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node collector-server.mjs",
     "analyze:contracts": "node analyze-collector-contracts.mjs",
+    "analyze:report-contracts": "powershell -NoProfile -ExecutionPolicy Bypass -File ./analyze-secure-report-contracts.ps1",
     "compact:data": "node compact-collector-data.mjs",
     "verify:real": "node verify-real-contracts.mjs",
     "migrate:data": "node migrate-collector-data.mjs",
