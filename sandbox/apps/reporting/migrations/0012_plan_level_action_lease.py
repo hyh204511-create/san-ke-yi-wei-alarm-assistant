@@ -33,7 +33,6 @@ class Migration(migrations.Migration):
     dependencies = [
         ("reporting", "0011_alarmfact_completion_manual_required_and_more"),
     ]
-
     operations = [
         migrations.RemoveConstraint(
             model_name="actionlease",
@@ -49,4 +48,3 @@ class Migration(migrations.Migration):
             ),
         ),
     ]
-
