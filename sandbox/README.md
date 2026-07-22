@@ -18,6 +18,16 @@ python manage.py runserver 127.0.0.1:18080
 
 打开：`http://127.0.0.1:18080/`。
 
+### Windows 自动启动后端
+
+在当前 Windows 用户下执行一次：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-backend-assistant-autostart.ps1
+```
+
+任务名为 `HN Alarm Assistant Backend`，会在用户登录 Windows 时启动本机后端，不保存助手账号、密码或验证码。服务启动后仍需在 `http://127.0.0.1:18080/assistant/login` 手动登录；浏览器保留会话后通常无需重复登录。
+
 ### 实名助手账号
 
 首次联调前通过环境变量提供不少于12位的本机密码，再创建实名账号。密码不会写入命令参数或仓库：
