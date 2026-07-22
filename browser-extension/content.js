@@ -169,12 +169,21 @@
     void runtimeSendMessage({ type: "CAPTURE", record: event.data.record, receivedAt: new Date().toISOString() }).then(refresh);
   });
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== "AUTHORIZED_KEEPALIVE_EXECUTE") return false;
-    try {
-      sendResponse(HnAuthorizedKeepalive.execute({ document, location }));
-    } catch {
-      sendResponse({ ok: false, code: "TARGET_NOT_FOUND", route: location.hash || "", actionKey: "ALARM_PREPROCESSING_QUERY", latencyMs: 0 });
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender.id !== chrome.runtime.id) return false;
+    if (message?.type === "AUTHORIZED_KEEPALIVE_EXECUTE") {
+      try {
+        sendResponse(HnAuthorizedKeepalive.execute({ document, location }));
+      } catch {
+        sendResponse({ ok: false, code: "TARGET_NOT_FOUND", route: location.hash || "", actionKey: "ALARM_PREPROCESSING_QUERY", latencyMs: 0 });
+      }
+      return false;
+    }
+    if (message?.type === "PLATFORM_ACTION_EXECUTE") {
+      Promise.resolve(globalThis.HnPlatformActionRuntime?.execute(message.request))
+        .then((result) => sendResponse(result || { status: "BLOCKED", errorCode: "ACTION_RUNTIME_UNAVAILABLE" }))
+        .catch(() => sendResponse({ status: "UNKNOWN", errorCode: "ACTION_RUNTIME_EXCEPTION" }));
+      return true;
     }
     return false;
   });
@@ -210,7 +219,7 @@
         <main class="view settings hidden"></main>
         <main class="view event-detail hidden"></main>
       </div>
-      <footer class="foot">默认演练模式 · 未验证真实接口不会执行对讲</footer>
+      <footer class="foot">默认演练模式 · 真实动作仅限明确确认的当前单条报警</footer>
     </section>`;
 
   function mount() {
@@ -337,7 +346,7 @@
       <button class="source-tab ${alarmView === "TECHNICAL" ? "active" : ""}" data-source="TECHNICAL">技术检测 ${counts.TECHNICAL}</button>
       <button class="source-tab ${alarmView === "PREWARNING" ? "active" : ""}" data-source="PREWARNING">预报警 ${counts.PREWARNING}</button>
       <button class="source-tab ${alarmView === "all" ? "active" : ""}" data-source="all">全部 ${items.length}</button>
-    </div><div class="notice">预报警来自省平台实时监控页的“预警列表”或“预警查询”页面，平台负责阈值和升级判定；插件收到后立即展示和入库，不进入优先队列、不向司机下发：${escapeHtml(prewarningFreshness)}。</div><div class="list">${visibleItems.length ? visibleItems.map((item) => {
+    </div><div class="notice">预报警来自省平台实时监控页的“预警列表”或“预警查询”页面，原始来源始终保留为PREWARNING；默认只展示和入库，只有值班员在详情中明确确认的当前一条超速预报警可进入限时真实动作测试：${escapeHtml(prewarningFreshness)}。</div><div class="list">${visibleItems.length ? visibleItems.map((item) => {
       const event = item.event;
       const technicalSummary = event.sourceKind === "TECHNICAL" ? event.technicalDetails?.detail : null;
       return `<button class="card event-card" data-id="${escapeHtml(event.eventId)}"><div class="row"><span class="title">${escapeHtml(event.vehicleNo || "未知车辆")}</span><span>${actionBadge(item)} ${reminderBadge(item)} ${completionBadge(item)}</span></div><div>${escapeHtml(event.alarmName || "未知报警")}</div>${technicalSummary ? `<div class="technical-summary">${escapeHtml(technicalSummary)}</div>` : ""}<div class="muted"><span class="source-label">${escapeHtml(alarmViewHelpers.displaySourceLabel(event))}</span> · ${escapeHtml(event.alarmTime || event.discoveredAt || "-")} · ${escapeHtml(event.companyName || "企业待补")}</div></button>`;
@@ -361,6 +370,7 @@
       ${kv("报警来源", event.sourceLabel)}${kv("来源接口", (event.sourceEndpoints || [event.rawEndpoint]).join("、"))}${kv("车牌", event.vehicleNo)}${kv("驾驶员", event.driverName)}${kv("企业", event.companyName)}${kv("报警ID", event.alarmId)}${kv("报警类型", event.alarmName)}${kv("报警时间", event.alarmTime)}${kv("位置", event.location)}${kv("速度", event.locationSpeed == null ? null : `${event.locationSpeed} km/h`)}${kv("平台状态", event.platformStatus)}${kv("报警状态", event.alarmStatus)}${kv("完成状态", event.alarmCompleteStatus)}${kv("处理标记", event.dealFlag)}${kv("事件状态", event.state)}${technicalDetailRows(event)}${kv("规则版本", item.decision?.ruleSetVersion)}${kv("命中规则", item.decision?.ruleId)}${kv("处理方式", item.decision?.action)}${kv("提醒分类", item.decision?.reminderPolicy?.category)}${kv("司机提醒", item.decision?.reminderPolicy?.driverReminder)}${kv("第二渠道", item.decision?.reminderPolicy?.secondaryChannelMode)}${kv("响应渠道", (item.decision?.channels || []).map((channel) => channel.type).join(item.decision?.channelStrategy === "PARALLEL" ? " ＋ " : " → "))}${kv("判断原因", item.decision?.reason)}${kv("完成判定", item.event?.completionAssessment?.status)}${kv("完成判定说明", item.event?.completionAssessment?.reason)}${kv("动作状态", item.action?.status)}${kv("渠道结果", (item.action?.attempts || []).map((attempt) => `${attempt.channelType}:${attempt.status}（重试${attempt.retryCount || 0}次）`).join("；"))}${kv("固定话术", (item.action?.attempts || []).map((attempt) => attempt.renderedText).filter(Boolean).join("；"))}${kv("失败原因", item.action?.error || item.action?.blockers?.join("；"))}${kv("处置工单", disposal?.status || (item.disposalSyncError ? "同步失败" : "未创建"))}${kv("工单负责人", disposal?.assignedTo)}${kv("字段冲突", Object.keys(visibleConflicts).length ? JSON.stringify(visibleConflicts) : "无")}
       ${item.disposalSyncError ? `<div class="notice bad">处置工单同步失败：${escapeHtml(item.disposalSyncError)}</div>` : ""}
       ${disposalControls(item)}
+      ${hasPermission("action.execute") && hasActiveShift() && dashboard.settings.mode === "LIVE" && event.sourceKind === "PREWARNING" && event.alarmName === "超速驾驶" && !item.action?.testPromotion && item.action?.status !== "SUCCEEDED" ? `<button class="arm-speeding-test danger" style="width:100%;padding:9px;margin-top:9px">执行当前一条超速预警真实测试</button>` : ""}
       ${hasPermission("action.retry") && hasActiveShift() && item.decision?.action === "AUTO_VOICE" && ["FAILED", "UNKNOWN", "BLOCKED"].includes(item.action?.status) ? `<button class="retry-action warn" style="width:100%;padding:8px;margin-top:9px">确认后重新执行语音</button>` : ""}
       ${hasPermission("disposal.note") && hasActiveShift() ? `<div class="note-row"><input class="note-input" maxlength="300" placeholder="添加实名值班备注"><button class="save-note">保存</button></div>` : `<div class="notice">${hasPermission("disposal.note") ? "请先在助手身份页认领当前班次。" : "当前实名角色无备注权限，事件保持只读。"}</div>`}
     </div>`;
@@ -379,6 +389,16 @@
       const response = await runtimeSendMessage({ type: "RETRY_ACTION", eventId });
       await refresh(); showEvent(eventId);
       if (!response.ok) window.alert(response.error || "重新执行失败");
+    });
+    detail.querySelector(".arm-speeding-test")?.addEventListener("click", async () => {
+      const confirmed = window.confirm(
+        `即将只对当前报警执行真实动作：${event.vehicleNo || "当前车辆"} · 超速驾驶 · ${event.alarmTime || ""}。插件将自动进入车辆监控，先发送固定语音，再发送文本和终端TTS，并在平台登记已处理。是否确认？`
+      );
+      if (!confirmed) return;
+      const response = await runtimeSendMessage({ type: "ARM_SPEEDING_PREWARNING_TEST", eventId, confirmed: true });
+      await refresh();
+      showEvent(eventId);
+      if (!response?.ok) window.alert(response?.error || "当前单条真实测试未完成，已停止并转人工");
     });
     detail.querySelector(".takeover-case")?.addEventListener("click", () => mutateDisposal(eventId, "takeover", {}));
     detail.querySelector(".complete-case")?.addEventListener("click", async () => {

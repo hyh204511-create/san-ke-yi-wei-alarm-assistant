@@ -33,13 +33,14 @@ function parseWav(buffer) {
   return { ...format, dataBytes };
 }
 
-test("超速报警话术与音频资产保持一致且默认禁止真实下发", async () => {
+test("超速报警话术与音频资产保持一致且只允许受控单条测试引用", async () => {
   const manifest = JSON.parse(await readFile(manifestUrl, "utf8"));
   const expectedText = "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。";
   assert.equal(manifest.ruleCode, "SPEEDING");
   assert.equal(manifest.text, expectedText);
-  assert.equal(manifest.review.status, "PENDING_HUMAN_REVIEW");
-  assert.equal(manifest.review.integrationAllowed, false);
+  assert.equal(manifest.review.status, "APPROVED");
+  assert.equal(manifest.review.integrationAllowed, true);
+  assert.match(manifest.review.notes, /当前单条超速预报警/);
 
   for (const file of Object.values(manifest.files)) {
     const fileUrl = new URL(file.path, manifestUrl);

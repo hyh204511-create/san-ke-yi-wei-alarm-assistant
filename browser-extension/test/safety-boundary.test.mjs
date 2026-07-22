@@ -2,14 +2,31 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("当前构建不会执行未联调的真实平台对讲动作", async () => {
+test("真实动作执行器保持在隔离内容脚本且只允许当前超速预警固定接口", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../platform-action-runtime.js", import.meta.url), "utf8");
+  const pageHook = await readFile(new URL("../page-hook.js", import.meta.url), "utf8");
   const sandboxAdapter = await readFile(new URL("../sandbox-intercom.js", import.meta.url), "utf8");
   assert.equal(manifest.permissions.includes("scripting"), false);
+  assert.equal(manifest.permissions.includes("webRequest"), true);
   assert.doesNotMatch(worker, /chrome\.scripting\.executeScript/);
   assert.doesNotMatch(worker, /new WebSocket/);
-  assert.match(worker, /真实对讲执行适配器尚未获得客户授权并完成测试车辆联调/);
+  assert.match(worker, /ARM_SPEEDING_PREWARNING_TEST/);
+  assert.match(worker, /testPromotion/);
+  for (const receiptField of ["processingStatus", "voiceStatus", "textStatus", "fallbackUsed", "bytesSent", "durationMs"]) {
+    assert.match(worker, new RegExp(`"${receiptField}"`));
+  }
+  assert.match(runtime, /sourceKind\s*\|\|\s*""\)\s*===\s*"PREWARNING"/);
+  assert.match(runtime, /alarmName\)\s*===\s*"超速驾驶"/);
+  for (const endpoint of [
+    "sendRealAudioTransmissionMessage",
+    "sendRealAudioKeepMessage",
+    "sendRealAudioControlMessage",
+    "sendCarMessage",
+    "positiveAlarm",
+  ]) assert.match(runtime, new RegExp(endpoint));
+  assert.doesNotMatch(pageHook, /sendRealAudioTransmissionMessage|sendCarMessage|positiveAlarm|new WebSocket/);
   assert.match(sandboxAdapter, /http:\/\/127\.0\.0\.1:18080\/sandbox\/api\/intercom\/simulate/);
   assert.doesNotMatch(sandboxAdapter, /hnznjg\.cn/);
 });

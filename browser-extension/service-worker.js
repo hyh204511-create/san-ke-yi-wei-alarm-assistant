@@ -4,6 +4,7 @@ import {
   compareAlarmOrder,
   createActionAttempt,
   createResponsePlan,
+  createSpeedingPrewarningTestDecision,
   enterpriseAccessForEvent,
   evaluateCompletion,
   evaluateRules,
@@ -16,6 +17,8 @@ import {
 import { executeSandboxIntercom } from "./sandbox-intercom.js";
 import { executeSandboxText } from "./sandbox-text.js";
 import { executeWithRetry } from "./response-retry.js";
+import { executeVoiceThenTextFallback } from "./response-plan-execution.js";
+import { createPlatformAuthCache } from "./platform-auth-cache.js";
 import {
   defaultPlatformSession,
   isHnPlatformUrl,
@@ -57,8 +60,42 @@ const DEFAULT_SETTINGS = {
     keepalivePath: "/api/gpsp-service/sendVideo/sendRealAudioKeepMessage",
     stopPath: "/api/schedule-service/sendVideo/sendRealAudioControlMessage"
   },
+  prewarningTest: {
+    targetEventId: null,
+    approvedAt: null,
+    expiresAt: null,
+    consumedAt: null,
+  },
   popupSelectors: ["#sandbox-alarm-popup:not(.hidden)", ".alarm-detail-dialog"]
 };
+
+const BUNDLED_SPEEDING_ASSETS = Object.freeze({
+  "voice-speeding-v1": Object.freeze({
+    assetKey: "voice-speeding-v1",
+    version: "v1",
+    channelType: "VOICE",
+    contentHash: "94974f7f4ed6691a248969d85653801144ddf4b097476db9bf2c6cb19cd9498e",
+    audioPath: "assets/alarm-audio/speeding-female-8k-mono.pcm",
+    sampleRate: 8000,
+    channels: 1,
+    bitsPerSample: 16,
+    durationMs: 8662,
+  }),
+  "text-speeding-v1": Object.freeze({
+    assetKey: "text-speeding-v1",
+    version: "v1",
+    channelType: "TEXT",
+    contentHash: "9d4d795697e27dd4d8da287fa649f8417c4a14e4b3f1eec565c9cf2c58ca24d7",
+    textTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。",
+  }),
+});
+
+const platformAuthCache = createPlatformAuthCache();
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => { platformAuthCache.observe(details); },
+  { urls: ["https://*.hnznjg.cn:7443/api/*"], types: ["xmlhttprequest"] },
+  ["requestHeaders", "extraHeaders"],
+);
 
 const DEFAULT_STATE = {
   outboxIds: [],
@@ -146,7 +183,12 @@ async function setState(state) {
 
 async function getSettings() {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...(stored[SETTINGS_KEY] || {}), intercom: { ...DEFAULT_SETTINGS.intercom, ...(stored[SETTINGS_KEY]?.intercom || {}) } };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(stored[SETTINGS_KEY] || {}),
+    intercom: { ...DEFAULT_SETTINGS.intercom, ...(stored[SETTINGS_KEY]?.intercom || {}) },
+    prewarningTest: { ...DEFAULT_SETTINGS.prewarningTest, ...(stored[SETTINGS_KEY]?.prewarningTest || {}) },
+  };
 }
 
 function validateAssistantBase(value) {
@@ -310,13 +352,17 @@ async function getDutyNotifications(identity, { force = false } = {}) {
 
 async function acquireServerActionLease(event, action, identity) {
   if (!identity?.authenticated || !identity.activeShift || action?.mode !== "LIVE") return null;
-  const actionType = action.channelType === "TEXT" || action.type === "TEXT_TTS" ? "TEXT_TTS" : "VOICE_INTERCOM";
+  const actionType = action.type === "RESPONSE_PLAN"
+    ? "RESPONSE_PLAN"
+    : action.channelType === "TEXT" || action.type === "TEXT_TTS"
+      ? "TEXT_TTS"
+      : "VOICE_INTERCOM";
   const response = await assistantMutation("/reports/api/action-leases/acquire", {
     eventId: event.eventId,
     deviceId: await getDeviceId(),
     actionType,
     mode: "LIVE",
-    durationSeconds: 90,
+    durationSeconds: actionType === "RESPONSE_PLAN" ? 180 : 90,
   }, identity);
   return response?.data || null;
 }
@@ -326,8 +372,25 @@ async function reportServerActionResult(lease, action, identity) {
   const resultCode = ["SUCCEEDED", "FAILED", "UNKNOWN", "BLOCKED", "MANUAL_REQUIRED"].includes(action?.status)
     ? action.status : "UNKNOWN";
   const safeResult = {};
-  const source = action?.result && typeof action.result === "object" ? action.result : {};
-  for (const key of ["receiptRef", "errorCode", "messageCode", "latencyMs", "attemptNumber", "simulated", "terminalTts", "playbackStarted", "platformHttpStatus"]) {
+  const attempts = Array.isArray(action?.attempts) ? action.attempts : [];
+  const voiceAttempt = attempts.find((item) => item.channelType === "VOICE");
+  const textAttempt = attempts.find((item) => item.channelType === "TEXT");
+  const source = {
+    ...(action?.result && typeof action.result === "object" ? action.result : {}),
+    ...(attempts.length ? {
+      processingStatus: action.processingStatus || action.status,
+      voiceStatus: voiceAttempt?.status || "NOT_ATTEMPTED",
+      textStatus: textAttempt?.status || "NOT_ATTEMPTED",
+      fallbackUsed: action.fallbackUsed === true,
+      bytesSent: Number(voiceAttempt?.result?.bytesSent || 0),
+      durationMs: attempts.reduce((total, item) => total + Number(item?.result?.durationMs || 0), 0),
+    } : {}),
+  };
+  for (const key of [
+    "receiptRef", "errorCode", "messageCode", "latencyMs", "attemptNumber", "simulated",
+    "terminalTts", "playbackStarted", "platformHttpStatus", "processingStatus", "voiceStatus",
+    "textStatus", "fallbackUsed", "bytesSent", "durationMs",
+  ]) {
     if (source[key] !== undefined) safeResult[key] = source[key];
   }
   try {
@@ -340,6 +403,98 @@ async function reportServerActionResult(lease, action, identity) {
     }, identity);
   } catch (error) {
     await audit("ACTION_RESULT_SYNC_FAILED", { code: error?.code || "UNKNOWN", status: error?.status || 0 });
+  }
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+async function loadVerifiedPcmBase64(attempt) {
+  const asset = BUNDLED_SPEEDING_ASSETS[attempt.assetKey];
+  if (!asset || asset.channelType !== "VOICE" || asset.audioPath !== attempt.audioAssetPath) {
+    throw new Error("固定语音资产不在批准清单");
+  }
+  const response = await fetch(chrome.runtime.getURL(asset.audioPath), { cache: "no-store" });
+  if (!response.ok) throw new Error("固定语音资产读取失败");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hash = [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, "0")).join("");
+  if (hash !== asset.contentHash || bytes.length !== 138596) throw new Error("固定语音资产完整性校验失败");
+  return bytesToBase64(bytes);
+}
+
+async function livePlatformTab(senderTabId) {
+  if (senderTabId != null) {
+    try {
+      const tab = await chrome.tabs.get(senderTabId);
+      if (isHnPlatformUrl(tab.url) && new URL(tab.url).hash.split("?")[0] === "#/vehicle-monitor/real-time") return tab;
+    } catch {}
+  }
+  return chooseHnPlatformTab([
+    { route: "#/vehicle-monitor/real-time", actionKey: "SPEEDING_SINGLE_TEST", mode: "LIVE_ACTION" },
+  ]);
+}
+
+async function executeLivePlatformAttempt(original, event, senderTabId) {
+  const tab = await livePlatformTab(senderTabId);
+  if (!tab?.id) return { status: "BLOCKED", error: "未找到已登录的省平台实时监控页" };
+  let authorization = platformAuthCache.get(tab.id, tab.url);
+  const authDeadline = Date.now() + 6000;
+  while (!authorization && Date.now() < authDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    authorization = platformAuthCache.get(tab.id, tab.url);
+  }
+  if (!authorization) {
+    return { status: "BLOCKED", error: "尚未观察到当前实时监控标签的短期平台认证上下文" };
+  }
+  let pcmBase64 = null;
+  if (original.channelType === "VOICE") {
+    try {
+      pcmBase64 = await loadVerifiedPcmBase64(original);
+    } catch (error) {
+      return { status: "BLOCKED", error: String(error?.message || error) };
+    }
+  }
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: "PLATFORM_ACTION_EXECUTE",
+      request: {
+        operation: original.channelType,
+        actionId: original.actionId,
+        renderedText: original.renderedText,
+        pcmBase64,
+        authorization,
+        event: {
+          alarmId: event.alarmId,
+          alarmTime: event.alarmTime,
+          alarmName: event.alarmName,
+          sourceKind: event.sourceKind,
+          vehicleId: event.vehicleId,
+          vehicleNo: event.vehicleNo,
+          certColor: event.certColor || "",
+        },
+      },
+    });
+    const status = ["SUCCEEDED", "FAILED", "UNKNOWN", "BLOCKED"].includes(response?.status)
+      ? response.status
+      : "UNKNOWN";
+    const safe = {};
+    for (const key of ["receiptRef", "errorCode", "platformHttpStatus", "terminalTts", "playbackStarted", "bytesSent", "durationMs"]) {
+      if (response?.[key] !== undefined) safe[key] = response[key];
+    }
+    return {
+      status,
+      result: safe,
+      error: status === "SUCCEEDED" ? null : String(response?.errorCode || "平台动作结果未知"),
+      blockers: status === "BLOCKED" ? [String(response?.errorCode || "平台动作被阻断")] : [],
+    };
+  } catch {
+    return { status: "UNKNOWN", error: "插件与省平台页面通信中断，动作结果未知" };
   }
 }
 
@@ -456,7 +611,12 @@ async function getCachedRuntimeContext(extraKeys = []) {
     ruleSet: trustedRuleSet || bundled,
     responseAssets: trustedRuleSet?.schemaVersion === 2 ? stored[RESPONSE_ASSETS_KEY] || {} : {},
     audioAssets: stored[AUDIO_KEY] || {},
-    settings: { ...DEFAULT_SETTINGS, ...settingsValue, intercom: { ...DEFAULT_SETTINGS.intercom, ...(settingsValue.intercom || {}) } },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...settingsValue,
+      intercom: { ...DEFAULT_SETTINGS.intercom, ...(settingsValue.intercom || {}) },
+      prewarningTest: { ...DEFAULT_SETTINGS.prewarningTest, ...(settingsValue.prewarningTest || {}) },
+    },
     ruleSetMeta: trustedRuleSet ? meta : { ...meta, source: "BUNDLED_SAFE_DEFAULT" },
   };
 }
@@ -1007,7 +1167,7 @@ async function executeScheduledAction(item) {
     : executeAction(item.event, item.decision, item.action, item.senderTabId);
 }
 
-async function executeResponseAttempt(original, event) {
+async function executeResponseAttempt(original, event, senderTabId) {
   if (original.status === "BLOCKED") {
     const blocked = {
       ...original,
@@ -1029,6 +1189,8 @@ async function executeResponseAttempt(original, event) {
       delivery = { ...delivery, ...(await executeSandboxText({ event, action: delivery })) };
     } else if (delivery.mode === "SANDBOX" && delivery.channelType === "VOICE") {
       delivery = { ...delivery, ...(await executeSandboxIntercom({ event, action: { ...delivery, audioAssetId: delivery.assetKey } })) };
+    } else if (delivery.mode === "LIVE") {
+      delivery = { ...delivery, ...(await executeLivePlatformAttempt(delivery, event, senderTabId)) };
     } else {
       delivery = { ...delivery, status: "BLOCKED", blockers: [...(delivery.blockers || []), "真实渠道执行适配器未获授权"] };
     }
@@ -1058,7 +1220,7 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
   let serverLease = null;
   if (plan.mode === "LIVE") {
     try {
-      serverLease = await acquireServerActionLease(event, plan.attempts?.[0] || plan, identity);
+      serverLease = await acquireServerActionLease(event, plan, identity);
     } catch (error) {
       return finishResponsePlan(event, decision, {
         ...plan,
@@ -1088,8 +1250,17 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
   const strategy = currentPlan.channelStrategy || (ordered.length <= 1 ? "SINGLE" : "SEQUENTIAL");
   let attempts = [];
   let failed = false;
-  if (strategy === "PARALLEL") {
-    attempts = await Promise.all(ordered.map((attempt) => executeResponseAttempt(attempt, event)));
+  let fallbackUsed = false;
+  if (currentPlan.testPromotion === true && currentPlan.fallback === "TEXT_ON_VOICE_FAILURE") {
+    const outcome = await executeVoiceThenTextFallback(ordered, {
+      execute: (attempt) => executeResponseAttempt(attempt, event, senderTabId),
+      skip: skippedResponseAttempt,
+    });
+    attempts = outcome.attempts;
+    fallbackUsed = outcome.fallbackUsed;
+    failed = outcome.failed;
+  } else if (strategy === "PARALLEL") {
+    attempts = await Promise.all(ordered.map((attempt) => executeResponseAttempt(attempt, event, senderTabId)));
     failed = attempts.some((attempt) => attempt.status !== "SUCCEEDED");
   } else if (strategy === "FALLBACK") {
     let resolved = false;
@@ -1100,7 +1271,7 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
       } else if (stopForUnknown) {
         attempts.push(await skippedResponseAttempt(original, "前序渠道结果未知或被安全阻断，禁止自动切换渠道"));
       } else {
-        const attempt = await executeResponseAttempt(original, event);
+        const attempt = await executeResponseAttempt(original, event, senderTabId);
         attempts.push(attempt);
         if (attempt.status === "SUCCEEDED") resolved = true;
         else if (["UNKNOWN", "BLOCKED"].includes(attempt.status)) stopForUnknown = true;
@@ -1112,7 +1283,7 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
     for (const original of ordered) {
       if (stop) attempts.push(await skippedResponseAttempt(original, "前序渠道未明确成功"));
       else {
-        const attempt = await executeResponseAttempt(original, event);
+        const attempt = await executeResponseAttempt(original, event, senderTabId);
         attempts.push(attempt);
         if (attempt.status !== "SUCCEEDED") stop = true;
       }
@@ -1123,7 +1294,14 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
     ...currentPlan,
     attempts,
     status: failed ? "MANUAL_REQUIRED" : "SUCCEEDED",
-    blockers: attempts.flatMap((attempt) => (attempt.blockers || []).map((blocker) => `${attempt.channelType}: ${blocker}`)),
+    processingStatus: failed
+      ? fallbackUsed ? "PROCESSED_WITH_FALLBACK" : "MANUAL_REQUIRED"
+      : "PROCESSED",
+    fallbackUsed,
+    blockers: attempts.flatMap((attempt) => [
+      ...(attempt.blockers || []).map((blocker) => `${attempt.channelType}: ${blocker}`),
+      ...(attempt.error ? [`${attempt.channelType}: ${attempt.error}`] : []),
+    ]),
     finishedAt: new Date().toISOString(),
   };
   return finishResponsePlan(event, decision, currentPlan, identity, serverLease);
@@ -1393,12 +1571,75 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === KEEPALIVE_ALARM) void performAuthorizedKeepalive();
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
+  platformAuthCache.delete(tabId);
   void withStorage(async () => {
     const state = await getState();
     if (state.primaryTabId === tabId) state.primaryTabId = null;
     await setState(state);
   });
 });
+
+async function armAndExecuteSpeedingPrewarningTest(eventId, senderTabId, confirmed) {
+  if (confirmed !== true) throw new Error("必须明确确认当前单条真实动作测试");
+  const identity = await requireAssistantPermission("action.execute", { requireShift: true });
+  const key = String(eventId || "");
+  const stored = await chrome.storage.local.get([`event:${key}`, `decision:${key}`, `action:${key}`]);
+  let event = stored[`event:${key}`];
+  if (!event) throw new Error("当前报警事件不存在");
+  requireEventEnterpriseAccess(identity, event);
+  const previousAction = stored[`action:${key}`];
+  if (previousAction?.testPromotion || previousAction?.status === "SUCCEEDED") {
+    throw new Error("当前报警已经执行或尝试过单条测试，禁止重复下发");
+  }
+  const settings = await getSettings();
+  if (settings.mode !== "LIVE") throw new Error("请先由系统管理员将插件运行模式设置为真实动作");
+  const state = await getState();
+  if (
+    state.platformSession.status !== "AUTHENTICATED"
+    || state.platformSession.route !== "#/vehicle-monitor/real-time"
+    || !state.platformSession.platformDisplayName
+  ) {
+    throw new Error("当前省平台实时监控页登录身份尚未确认");
+  }
+  const decision = createSpeedingPrewarningTestDecision(event);
+  await sendDeviceHeartbeat();
+  await assistantMutation("/governance/api/devices/verify-platform-action", {
+    deviceId: await getDeviceId(),
+    platformDisplayName: state.platformSession.platformDisplayName,
+    route: state.platformSession.route,
+  }, identity);
+  const approvedAt = new Date().toISOString();
+  const nextSettings = {
+    ...settings,
+    prewarningTest: {
+      targetEventId: event.eventId,
+      approvedAt,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      consumedAt: approvedAt,
+    },
+  };
+  await chrome.storage.local.set({ [SETTINGS_KEY]: nextSettings });
+  let action = createResponsePlan(event, decision, nextSettings, BUNDLED_SPEEDING_ASSETS);
+  if (action.status !== "PLANNED") throw new Error(action.blockers.join("；") || "当前单条测试计划未通过安全检查");
+  action = { ...action, initiatedBy: "DUTY_OPERATOR", initiatedByUserId: identity.userId };
+  event = eventWithState({ ...event, testPromotion: true, effectiveActionKind: "TEST_FORMAL" }, "PLANNED");
+  await chrome.storage.local.set({
+    [`event:${event.eventId}`]: event,
+    [`decision:${event.eventId}`]: decision,
+    [`action:${event.eventId}`]: action,
+  });
+  await persist("event", event);
+  await persist("decision", decision);
+  await persist("action", action);
+  await syncAlarmFact(event, decision, action, identity);
+  await audit("SPEEDING_PREWARNING_SINGLE_TEST_ARMED", {
+    eventId: event.eventId,
+    actorUserId: identity.userId,
+    expiresAt: nextSettings.prewarningTest.expiresAt,
+  });
+  const result = await executeResponsePlan(event, decision, action, senderTabId);
+  return { ok: result.status === "SUCCEEDED", action: result, error: result.blockers?.join("；") || result.error || null };
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const respond = (promise) => { void promise.then(sendResponse).catch((error) => sendResponse({ ok: false, error: String(error?.message || error) })); return true; };
@@ -1449,7 +1690,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return respond((async () => {
       const identity = await requireAssistantPermission("system.configure");
       const previous = await getSettings();
-      const next = { ...previous, ...message.settings, intercom: { ...previous.intercom, ...(message.settings.intercom || {}) } };
+      const next = {
+        ...previous,
+        ...message.settings,
+        intercom: { ...previous.intercom, ...(message.settings.intercom || {}) },
+        prewarningTest: { ...previous.prewarningTest, ...(message.settings.prewarningTest || {}) },
+      };
       next.assistantBase = validateAssistantBase(next.assistantBase || DEFAULT_ASSISTANT_BASE);
       if (next.assistantBase !== previous.assistantBase && next.assistantBase.startsWith("https://")) {
         const origin = `${new URL(next.assistantBase).origin}/*`;
@@ -1465,6 +1711,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await audit("SETTINGS_UPDATED", { actorUserId: identity.userId, actorRoles: identity.roles, mode: next.mode, allowlistCount: next.vehicleAllowlist.length, intercomVerified: next.intercom.verified });
       return { ok: true, settings: next };
     })());
+  }
+  if (message.type === "ARM_SPEEDING_PREWARNING_TEST") {
+    return respond(withProcessing(() => armAndExecuteSpeedingPrewarningTest(
+      message.eventId,
+      sender.tab?.id,
+      message.confirmed,
+    )));
   }
   if (message.type === "NOTE_ADD") {
     return respond((async () => {

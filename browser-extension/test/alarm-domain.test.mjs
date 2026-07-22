@@ -6,6 +6,7 @@ import {
   compareAlarmOrder,
   createActionAttempt,
   createResponsePlan,
+  createSpeedingPrewarningTestDecision,
   enterpriseAccessForEvent,
   evaluateCompletion,
   evaluateRules,
@@ -18,6 +19,67 @@ import {
   validateRuntimeRuleSet,
   validateRuleSet
 } from "../alarm-domain.js";
+
+test("当前单条超速预报警保留PREWARNING来源并生成受控语音后文本计划", () => {
+  const event = {
+    eventId: "alarm:id:2079948988450365440",
+    alarmId: "2079948988450365440",
+    sourceKind: "PREWARNING",
+    alarmName: "超速驾驶",
+    alarmTime: "2026-07-23 00:10:00",
+    vehicleId: "vehicle-test-001",
+    vehicleNo: "模拟车A01",
+    certColor: "2",
+  };
+  const decision = createSpeedingPrewarningTestDecision(event);
+  assert.equal(decision.testPromotion, true);
+  assert.equal(decision.effectiveActionKind, "TEST_FORMAL");
+  assert.deepEqual(decision.channels.map((channel) => channel.type), ["VOICE", "TEXT"]);
+  const settings = {
+    mode: "LIVE",
+    prewarningTest: {
+      targetEventId: event.eventId,
+      approvedAt: "2026-07-23T00:10:00+08:00",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    },
+  };
+  const assets = {
+    "voice-speeding-v1": {
+      assetKey: "voice-speeding-v1", channelType: "VOICE", version: "v1",
+      contentHash: "voice-hash", audioPath: "assets/alarm-audio/speeding-female-8k-mono.pcm",
+    },
+    "text-speeding-v1": {
+      assetKey: "text-speeding-v1", channelType: "TEXT", version: "v1",
+      contentHash: "text-hash", textTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。",
+    },
+  };
+  const plan = createResponsePlan(event, decision, settings, assets);
+  assert.equal(plan.status, "PLANNED");
+  assert.equal(plan.testPromotion, true);
+  assert.equal(plan.attempts[0].audioAssetPath, "assets/alarm-audio/speeding-female-8k-mono.pcm");
+  assert.equal(event.sourceKind, "PREWARNING");
+});
+
+test("未锁定到当前事件或授权过期时超速预报警真实计划保持阻断", () => {
+  const event = {
+    eventId: "alarm:id:2079948988450365441", alarmId: "2079948988450365441",
+    sourceKind: "PREWARNING", alarmName: "超速驾驶", vehicleId: "vehicle-test-002", vehicleNo: "模拟车A02", certColor: "2",
+  };
+  const decision = createSpeedingPrewarningTestDecision(event);
+  const plan = createResponsePlan(event, decision, {
+    mode: "LIVE",
+    prewarningTest: {
+      targetEventId: "alarm:id:another",
+      approvedAt: "2026-07-23T00:10:00+08:00",
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+    },
+  }, {
+    "voice-speeding-v1": { assetKey: "voice-speeding-v1", channelType: "VOICE", version: "v1", contentHash: "v" },
+    "text-speeding-v1": { assetKey: "text-speeding-v1", channelType: "TEXT", version: "v1", contentHash: "t", textTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。" },
+  });
+  assert.equal(plan.status, "BLOCKED");
+  assert.match(plan.blockers.join("；"), /真实文本和语音适配器尚未完成授权联调/);
+});
 
 const RETRY_POLICY = { maxRetries: 2, delaysMs: [5000, 10000], retryOn: ["FAILED"], maxDurationMs: 30000 };
 

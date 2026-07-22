@@ -59,8 +59,9 @@
     "trailing200msSilent": true
   },
   "review": {
-    "status": "PENDING_HUMAN_REVIEW",
-    "integrationAllowed": false,
-    "notes": "试听确认发音、停顿和车内辨识度后，方可接入真实下发。"
+    "status": "APPROVED",
+    "integrationAllowed": true,
+    "reviewedAt": "2026-07-23T00:43:10.6943480+08:00",
+    "notes": "项目负责人已确认试听通过；仅允许当前单条超速预报警测试流程引用。"
   }
 }
