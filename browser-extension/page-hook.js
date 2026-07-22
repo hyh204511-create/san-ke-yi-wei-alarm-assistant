@@ -133,6 +133,70 @@
     }, location.origin);
   }
 
+  function parseSharedWorkerPayload(value, depth = 0, seen = new WeakSet()) {
+    if (value == null) return null;
+    if (depth > 4) return null;
+    if (typeof value === "string") {
+      if (value.length > MAX_TEXT_LENGTH) return null;
+      try { return parseSharedWorkerPayload(JSON.parse(value)); } catch { return null; }
+    }
+    if (typeof value !== "object") return null;
+    if (seen.has(value)) return null;
+    seen.add(value);
+    if (value.funCode) return value;
+    for (const nested of [value.data, value.body, value.message]) {
+      const payload = parseSharedWorkerPayload(nested, depth + 1, seen);
+      if (payload) return payload;
+    }
+    return null;
+  }
+
+  function captureSharedWorkerMessage(event) {
+    const payload = parseSharedWorkerPayload(event?.data ?? event);
+    if (!payload || payload.funCode !== "ALARM_ADD" || String(payload.alarmKind) !== "1") return;
+    emit({
+      transport: "shared-worker-message",
+      method: "MESSAGE",
+      url: location.href,
+      path: "/shared-worker/ALARM_ADD",
+      matchedRule: "realtime-alarms",
+      category: "alarm",
+      startedAt: new Date().toISOString(),
+      durationMs: 0,
+      status: 200,
+      ok: true,
+      request: { headers: {}, body: null },
+      response: {
+        headers: {},
+        contentType: "application/json",
+        body: redact(payload),
+        truncated: false
+      }
+    });
+  }
+
+  function installSharedWorkerObserver() {
+    const NativeSharedWorker = window.SharedWorker;
+    if (typeof NativeSharedWorker !== "function" || window.__HN_ALARM_SHARED_WORKER_OBSERVER__) return;
+    try {
+      const ObservedSharedWorker = new Proxy(NativeSharedWorker, {
+        construct(target, args, newTarget) {
+          const worker = Reflect.construct(target, args, newTarget);
+          try {
+            const port = worker?.port;
+            if (port && typeof port.addEventListener === "function") {
+              port.addEventListener("message", captureSharedWorkerMessage);
+              if (typeof port.start === "function") port.start();
+            }
+          } catch {}
+          return worker;
+        }
+      });
+      window.SharedWorker = ObservedSharedWorker;
+      window.__HN_ALARM_SHARED_WORKER_OBSERVER__ = true;
+    } catch {}
+  }
+
   function isRealtimePollTarget(rule) {
     return Boolean(rule?.path?.includes(REALTIME_POLL_PATH) && REALTIME_MONITOR_ROUTE.test(location.hash || ""));
   }
@@ -335,5 +399,6 @@
     return originalSend.call(this, body);
   };
 
+  installSharedWorkerObserver();
   setInterval(runRealtimePoll, REALTIME_POLL_INTERVAL_MS);
 })();

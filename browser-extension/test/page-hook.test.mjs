@@ -35,6 +35,37 @@ function makeContext() {
     }
   }
 
+  class FakePort {
+    constructor() {
+      this.listeners = [];
+      this.started = false;
+      this._onmessage = null;
+    }
+    get onmessage() {
+      return this._onmessage;
+    }
+    set onmessage(value) {
+      this._onmessage = value;
+    }
+    addEventListener(name, callback) {
+      if (name === "message") this.listeners.push(callback);
+    }
+    start() {
+      this.started = true;
+    }
+    dispatch(data) {
+      const event = { data };
+      this._onmessage?.(event);
+      for (const listener of this.listeners) listener(event);
+    }
+  }
+
+  class FakeSharedWorker {
+    constructor() {
+      this.port = new FakePort();
+    }
+  }
+
   const context = {
     URL,
     URLSearchParams,
@@ -43,6 +74,7 @@ function makeContext() {
     Response,
     FormData,
     XMLHttpRequest: FakeXHR,
+    SharedWorker: FakeSharedWorker,
     crypto: webcrypto,
     location: {
       href: "https://hn.hnznjg.cn:7443/#/board-center",
@@ -153,6 +185,40 @@ test("实时监控页内部活动页签区分正式实时报警和预警列表",
 
   assert.equal(messages[0].record.matchedRule, "realtime-alarms");
   assert.equal(messages[1].record.matchedRule, "prewarning-query");
+});
+
+test("SharedWorker 的正式报警消息归类为实时报警，预警消息不升级", async () => {
+  const { context, messages } = makeContext();
+  context.location.hash = "#/vehicle-monitor/real-time";
+  const worker = new context.SharedWorker("/js/sharedWorker.js");
+  let delivered = 0;
+  worker.port.onmessage = () => { delivered += 1; };
+
+  worker.port.dispatch({
+    funCode: "ALARM_ADD",
+    alarmKind: 1,
+    id: "synthetic-realtime-id",
+    alarmId: "synthetic-alarm-type",
+    carId: "synthetic-car-id",
+    certId: "湘A测001",
+    alarmName: "模拟正式报警",
+    contactInformation: "synthetic-phone"
+  });
+  worker.port.dispatch({
+    funCode: "ALARM_ADD",
+    alarmKind: 0,
+    id: "synthetic-prewarning-id",
+    alarmId: "18",
+    carId: "synthetic-car-id"
+  });
+
+  assert.equal(delivered, 2);
+  assert.equal(worker.port.started, true);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].record.transport, "shared-worker-message");
+  assert.equal(messages[0].record.matchedRule, "realtime-alarms");
+  assert.equal(messages[0].record.response.body.contactInformation, "[REDACTED]");
+  assert.equal(messages[0].record.response.body.alarmName, "模拟正式报警");
 });
 
 test("报警预处理专用接口分别归类为统计和待处理明细", async () => {

@@ -65,6 +65,12 @@ curl http://127.0.0.1:17321/health
 
 ## Documentation
 
+### 实时报警采集边界
+
+- 实时监控页 `#/vehicle-monitor/real-time` 中，`getVideoUnprocessedAlarm` 和 `alarmKind=0` 的 SharedWorker 消息是 `PREWARNING`，不得因为同一路由直接升级为正式实时报警。
+- 平台通过 SharedWorker 推送的 `funCode=ALARM_ADD` 且 `alarmKind=1` 才归类为 `REALTIME`；page hook 只能旁路监听并脱敏上报，不得拦截、改写或主动发送平台消息。
+- 浏览器真实验证必须使用当前 `browser-extension/` 解压目录；仓库中的旧 `browser-extension.crx` 不代表当前源码。源码变更后由用户重新加载扩展并按既有授权流程让已打开页面重新注入，助手不得点击扩展管理页或平台业务按钮。
+
 - `docs/product/`：需求和建设范围。
 - `docs/engineering/`：平台接入与采集实现。
 - `docs/decisions/`：已形成的范围和风险决策。
