@@ -23,7 +23,7 @@ class GovernanceError(Exception):
 ROLE_PERMISSIONS = {
     RoleAssignment.Role.UNIT_USER: {
         "alarm.view", "disposal.takeover", "disposal.note", "disposal.complete",
-        "action.execute", "action.retry", "report.view", "report.generate",
+        "action.execute", "action.retry", "report.view", "report.generate", "report.collect",
         "report.publish", "export.masked", "rule.runtime", "session.keepalive.execute",
         "evidence.view",
     },

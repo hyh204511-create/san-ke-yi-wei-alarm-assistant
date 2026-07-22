@@ -34,7 +34,7 @@ ROLE_PERMISSIONS = {
     RoleAssignment.Role.MONITOR_OPERATOR: {
         "alarm.view", "disposal.takeover", "disposal.note", "disposal.complete",
         "action.execute", "action.retry", "rule.runtime", "session.keepalive.execute",
-        "report.view", "evidence.view",
+        "report.view", "report.collect", "evidence.view",
     },
     # Rule configurers may draft and submit rules. Review and publication stay
     # with the separated rule reviewer role.
