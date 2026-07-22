@@ -52,9 +52,11 @@
   function activeMonitorAlarmTab(route = location.hash || "") {
     if (!REALTIME_MONITOR_ROUTE.test(route)) return null;
     try {
-      const activeNodes = [...document.querySelectorAll(
-        ".tab-item.active,[role='tab'][aria-selected='true'],[class*='tab-item'][class*='active']"
-      )];
+      const activeNodes = [...document.querySelectorAll(".tab-item,[role='tab'],[class*='tab-item']")].filter((node) => {
+        const className = String(node.className || "");
+        const hasClass = (name) => node.classList?.contains(name) || (` ${className} `).includes(` ${name} `);
+        return hasClass("active") || hasClass("tab-active") || hasClass("is-active") || node.getAttribute?.("aria-selected") === "true";
+      });
       const activeText = activeNodes.map((node) => String(node.textContent || "").replace(/\s+/g, " ").trim());
       if (activeText.some((text) => /^实时报警(?:\s+\d+)?$/.test(text))) return "REALTIME";
       if (activeText.some((text) => /^预警列表(?:\s+\d+)?$/.test(text))) return "PREWARNING";
@@ -65,6 +67,9 @@
   function resolveResponseRule(rule, requestRoute, requestActiveTab) {
     if (!rule?.path?.includes(ALARM_QUERY_PATH) || requestActiveTab || location.hash !== requestRoute) return rule;
     const responseActiveTab = activeMonitorAlarmTab(requestRoute);
+    if (!responseActiveTab && REALTIME_MONITOR_ROUTE.test(requestRoute)) {
+      return { ...rule, name: "alarm-center-discovery", category: "discovery" };
+    }
     return matchRule(rule.path, { route: requestRoute, activeTab: responseActiveTab }) || rule;
   }
 

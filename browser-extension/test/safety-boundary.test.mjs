@@ -141,14 +141,18 @@ test("插件产品文案区分自动TEXT_TTS和人工语音对讲", async () => 
 test("正式实时与待处理保留来源证据但在面板归为正式报警", async () => {
   const hook = await readFile(new URL("../page-hook.js", import.meta.url), "utf8");
   const domain = await readFile(new URL("../alarm-domain.js", import.meta.url), "utf8");
+  const view = await readFile(new URL("../alarm-view.js", import.meta.url), "utf8");
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   assert.match(hook, /pr-alarm-recorde/);
   assert.match(hook, /prewarning-query/);
+  assert.match(hook, /alarm-center-discovery/);
   assert.match(hook, /pending-alarms/);
   assert.match(domain, /kind: "PENDING", label: "待处理正式报警"/);
   assert.match(domain, /kind: "PREWARNING", label: "预报警（实时抓取）"/);
-  assert.match(content, /FORMAL_ALARM_KINDS = new Set\(\["REALTIME", "PENDING"\]\)/);
+  assert.match(view, /FORMAL_ALARM_KINDS = new Set\(\["REALTIME", "PENDING"\]\)/);
+  assert.match(content, /HnAlarmView/);
   assert.match(content, /data-source="FORMAL"[^>]*>正式报警/);
+  assert.match(content, /alarm-center-discovery/);
   assert.doesNotMatch(content, /data-source="PENDING"/);
   assert.match(content, /实时报警/);
   assert.match(content, /待处理/);

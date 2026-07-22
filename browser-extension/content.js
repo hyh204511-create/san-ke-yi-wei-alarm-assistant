@@ -1,10 +1,10 @@
 (() => {
   const debugStore = HnCollectorDebug.createStore(20);
   const ALLOWED_RULES = new Set([
-    "alarm-types", "realtime-alarms", "pending-alarms", "prewarning-alarms", "prewarning-query", "preprocessing-count", "alarm-query", "alarm-count", "alarm-details",
+    "alarm-types", "realtime-alarms", "pending-alarms", "prewarning-alarms", "prewarning-query", "preprocessing-count", "alarm-query", "alarm-center-discovery", "alarm-count", "alarm-details",
     "technical-alarms", "vehicle-tree", "vehicle-info", "vehicle-types", "check-post"
   ]);
-  const FORMAL_ALARM_KINDS = new Set(["REALTIME", "PENDING"]);
+  const alarmViewHelpers = globalThis.HnAlarmView;
   let dashboard = null;
   let selectedEventId = null;
   let popupObserver = null;
@@ -257,14 +257,6 @@
     return mode ? `<span class="badge">${escapeHtml(labels[mode] || mode)}</span>` : "";
   }
 
-  function isFormalAlarm(event) {
-    return FORMAL_ALARM_KINDS.has(event?.sourceKind);
-  }
-
-  function displaySourceLabel(event) {
-    return isFormalAlarm(event) ? "正式报警" : event?.sourceLabel || "其他来源";
-  }
-
   function hasPermission(permission) {
     return Boolean(dashboard?.identity?.authenticated && dashboard.identity.permissions?.includes(permission));
   }
@@ -328,11 +320,7 @@
   function renderEvents() {
     const target = shadow.querySelector(".events");
     const items = dashboard?.events || [];
-    const counts = {
-      FORMAL: items.filter((item) => isFormalAlarm(item.event)).length,
-      TECHNICAL: items.filter((item) => item.event.sourceKind === "TECHNICAL").length,
-      PREWARNING: items.filter((item) => item.event.sourceKind === "PREWARNING").length
-    };
+    const counts = alarmViewHelpers.countsFor(items);
     const latestPrewarningCapture = items.filter((item) => item.event.sourceKind === "PREWARNING")
       .map((item) => Date.parse(item.event.updatedAt || item.event.discoveredAt || ""))
       .filter(Number.isFinite).sort((a, b) => b - a)[0] || 0;
@@ -342,10 +330,7 @@
       : latestPrewarningCapture
       ? `${Math.max(0, Math.floor((Date.now() - latestPrewarningCapture) / 1000))}秒前更新`
       : "尚未在实时监控预警列表或预警查询页捕获";
-    const visibleItems = alarmView === "priority"
-      ? items.filter((item) => isFormalAlarm(item.event) || item.event.sourceKind === "TECHNICAL")
-      : alarmView === "FORMAL" ? items.filter((item) => isFormalAlarm(item.event))
-      : alarmView === "all" ? items : items.filter((item) => item.event.sourceKind === alarmView);
+    const visibleItems = alarmViewHelpers.filterEvents(items, alarmView);
     target.innerHTML = `<div class="source-tabs">
       <button class="source-tab ${alarmView === "priority" ? "active" : ""}" data-source="priority">优先队列 ${counts.FORMAL + counts.TECHNICAL}</button>
       <button class="source-tab ${alarmView === "FORMAL" ? "active" : ""}" data-source="FORMAL">正式报警 ${counts.FORMAL}</button>
@@ -355,7 +340,7 @@
     </div><div class="notice">预报警来自省平台实时监控页的“预警列表”或“预警查询”页面，平台负责阈值和升级判定；插件收到后立即展示和入库，不进入优先队列、不向司机下发：${escapeHtml(prewarningFreshness)}。</div><div class="list">${visibleItems.length ? visibleItems.map((item) => {
       const event = item.event;
       const technicalSummary = event.sourceKind === "TECHNICAL" ? event.technicalDetails?.detail : null;
-      return `<button class="card event-card" data-id="${escapeHtml(event.eventId)}"><div class="row"><span class="title">${escapeHtml(event.vehicleNo || "未知车辆")}</span><span>${actionBadge(item)} ${reminderBadge(item)} ${completionBadge(item)}</span></div><div>${escapeHtml(event.alarmName || "未知报警")}</div>${technicalSummary ? `<div class="technical-summary">${escapeHtml(technicalSummary)}</div>` : ""}<div class="muted"><span class="source-label">${escapeHtml(displaySourceLabel(event))}</span> · ${escapeHtml(event.alarmTime || event.discoveredAt || "-")} · ${escapeHtml(event.companyName || "企业待补")}</div></button>`;
+      return `<button class="card event-card" data-id="${escapeHtml(event.eventId)}"><div class="row"><span class="title">${escapeHtml(event.vehicleNo || "未知车辆")}</span><span>${actionBadge(item)} ${reminderBadge(item)} ${completionBadge(item)}</span></div><div>${escapeHtml(event.alarmName || "未知报警")}</div>${technicalSummary ? `<div class="technical-summary">${escapeHtml(technicalSummary)}</div>` : ""}<div class="muted"><span class="source-label">${escapeHtml(alarmViewHelpers.displaySourceLabel(event))}</span> · ${escapeHtml(event.alarmTime || event.discoveredAt || "-")} · ${escapeHtml(event.companyName || "企业待补")}</div></button>`;
     }).join("") : `<div class="empty">尚未形成标准报警事件</div>`}</div>`;
     target.querySelectorAll(".source-tab").forEach((button) => button.addEventListener("click", () => {
       alarmView = button.dataset.source;

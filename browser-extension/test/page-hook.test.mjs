@@ -187,6 +187,22 @@ test("实时监控页内部活动页签区分正式实时报警和预警列表",
   assert.equal(messages[1].record.matchedRule, "prewarning-query");
 });
 
+test("非活动的实时报警页签不会覆盖活动的预警列表页签", async () => {
+  const { context, messages } = makeContext();
+  context.location.hash = "#/vehicle-monitor/real-time";
+  context.document.querySelectorAll = () => [
+    { className: "tab-item inactive", textContent: "实时报警 1" },
+    { className: "tab-item active", textContent: "预警列表 66" }
+  ];
+  const request = new context.XMLHttpRequest();
+  request.open("POST", "https://zuul-2k1v.hnznjg.cn:7443/api/alarm-service/alarm/center/alarmQueryList");
+  request.send(JSON.stringify({ pageNum: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].record.matchedRule, "prewarning-query");
+});
+
 test("alarmQueryList 请求发起时页签尚未渲染，响应完成后重新归类", async () => {
   const { context, messages } = makeContext();
   context.location.hash = "#/vehicle-monitor/real-time";
@@ -205,6 +221,20 @@ test("alarmQueryList 请求发起时页签尚未渲染，响应完成后重新�
   assert.equal(messages.length, 1);
   assert.equal(messages[0].record.matchedRule, "realtime-alarms");
   assert.equal(messages[0].record.route, "#/vehicle-monitor/real-time");
+});
+
+test("实时监控页活动页签无法确认时只做发现捕获，不伪装成历史查询", async () => {
+  const { context, messages } = makeContext();
+  context.location.hash = "#/vehicle-monitor/real-time";
+  context.document.querySelectorAll = () => [];
+  const request = new context.XMLHttpRequest();
+  request.open("POST", "https://zuul-2k1v.hnznjg.cn:7443/api/alarm-service/alarm/center/alarmQueryList");
+  request.send(JSON.stringify({ pageNum: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].record.matchedRule, "alarm-center-discovery");
+  assert.equal(messages[0].record.category, "discovery");
 });
 
 test("SharedWorker 的正式报警消息归类为实时报警，预警消息不升级", async () => {

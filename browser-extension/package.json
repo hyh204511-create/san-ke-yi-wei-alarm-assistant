@@ -1,6 +1,6 @@
 {
   "name": "hn-alarm-browser-collector",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "private": true,
   "type": "module",
   "scripts": {

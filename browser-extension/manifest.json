@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "省平台报警数据采集助手",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "秒级采集并展示省平台预报警和正式报警，按已发布规则规划文本/TTS或自动语音响应，形成集中台账。",
   "permissions": [
     "alarms",
@@ -41,6 +41,7 @@
         "http://localhost:18080/*"
       ],
       "js": [
+        "alarm-view.js",
         "debug-records.js",
         "authorized-keepalive.js",
         "content.js"
