@@ -34,12 +34,28 @@
       return { name: monitorRoute ? "prewarning-query" : "realtime-alarms", category: "alarm", path };
     }
     if (path.includes("/alarm-service/alarm/center/alarmQueryList")) {
-      const realtimeRoute = /^#\/alarm-center\/alarm-verification(?:$|[/?])/i.test(location.hash || "");
-      const prewarningRoute = /^#\/alarm-center\/pr-alarm-recorde(?:$|[/?])/i.test(location.hash || "");
+      const activeTab = activeMonitorAlarmTab();
+      const realtimeRoute = /^#\/alarm-center\/alarm-verification(?:$|[/?])/i.test(location.hash || "")
+        || activeTab === "REALTIME";
+      const prewarningRoute = /^#\/alarm-center\/pr-alarm-recorde(?:$|[/?])/i.test(location.hash || "")
+        || activeTab === "PREWARNING";
       return { name: realtimeRoute ? "realtime-alarms" : prewarningRoute ? "prewarning-query" : "alarm-query", category: "alarm", path };
     }
     const rule = RULES.find(([, fragment]) => path.includes(fragment));
     return rule ? { name: rule[0], category: rule[2], path } : null;
+  }
+
+  function activeMonitorAlarmTab() {
+    if (!REALTIME_MONITOR_ROUTE.test(location.hash || "")) return null;
+    try {
+      const activeNodes = [...document.querySelectorAll(
+        ".tab-item.active,[role='tab'][aria-selected='true'],[class*='tab-item'][class*='active']"
+      )];
+      const activeText = activeNodes.map((node) => String(node.textContent || "").replace(/\s+/g, " ").trim());
+      if (activeText.some((text) => /^实时报警(?:\s+\d+)?$/.test(text))) return "REALTIME";
+      if (activeText.some((text) => /^预警列表(?:\s+\d+)?$/.test(text))) return "PREWARNING";
+    } catch {}
+    return null;
   }
 
   function redact(value, seen = new WeakSet()) {

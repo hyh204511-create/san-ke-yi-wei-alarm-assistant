@@ -49,7 +49,7 @@ function makeContext() {
       hash: "#/board-center",
       origin: "https://hn.hnznjg.cn:7443"
     },
-    document: { visibilityState: "visible" },
+    document: { visibilityState: "visible", querySelectorAll: () => [] },
     performance: { now: () => Date.now() },
     fetch: async () => new Response(JSON.stringify({
       success: true,
@@ -134,6 +134,25 @@ test("alarmQueryList 根据页面路由区分实时报警、预报警和历史�
   assert.equal(messages[1].record.route, "#/alarm-center/pr-alarm-recorde");
   assert.equal(messages[2].record.matchedRule, "alarm-query");
   assert.equal(messages[2].record.route, "#/alarm-center/alarm-recorde");
+});
+
+test("实时监控页内部活动页签区分正式实时报警和预警列表", async () => {
+  const { context, messages } = makeContext();
+  context.location.hash = "#/vehicle-monitor/real-time";
+  context.document.querySelectorAll = () => [{ className: "tab-item active", textContent: "实时报警 1" }];
+  const realtime = new context.XMLHttpRequest();
+  realtime.open("POST", "https://zuul-2k1v.hnznjg.cn:7443/api/alarm-service/alarm/center/alarmQueryList");
+  realtime.send(JSON.stringify({ pageNum: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  context.document.querySelectorAll = () => [{ className: "tab-item active", textContent: "预警列表 66" }];
+  const prewarning = new context.XMLHttpRequest();
+  prewarning.open("POST", "https://zuul-2k1v.hnznjg.cn:7443/api/alarm-service/alarm/center/alarmQueryList");
+  prewarning.send(JSON.stringify({ pageNum: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages[0].record.matchedRule, "realtime-alarms");
+  assert.equal(messages[1].record.matchedRule, "prewarning-query");
 });
 
 test("报警预处理专用接口分别归类为统计和待处理明细", async () => {
