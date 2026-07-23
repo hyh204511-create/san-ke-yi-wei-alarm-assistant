@@ -17,6 +17,7 @@ const verified = (sourceType, contract) => Object.freeze({
   ...contract,
   requestFields: Object.freeze(contract.requestFields),
   rawRowFields: Object.freeze(contract.rawRowFields),
+  requiredRawRowFields: Object.freeze(contract.requiredRawRowFields || contract.rawRowFields),
   fieldAliases: Object.freeze(contract.fieldAliases),
   valueAliases: Object.freeze(contract.valueAliases || {}),
 });
@@ -47,10 +48,11 @@ export const REPORT_SOURCE_CONTRACTS = Object.freeze({
     path: "/api/report-service/alarm/info/alarmInformationQueryReport",
     rowsPath: "data", totalPath: "total",
     requestFields: ["searchFlag", "latitudeSelection", "groupIdList", "certId", "driverName", "dispositionMode", "vehicleStatus", "alarmIds", "timeType", "manufactorId", "alarmQueryStartTime", "alarmQueryEndTime", "pageNum", "pageSize"],
-    rawRowFields: ["alarmName", "alarmTime", "carId", "certColorName", "certId", "cityName", "countyName", "groupId", "groupName", "id", "traceno"],
+    rawRowFields: ["alarmName", "alarmStatusName", "alarmTime", "carId", "certColorName", "certId", "cityName", "countyName", "detail", "dispositionMode", "dispositionOperid", "dispositionText", "dispositionTime", "driverName", "groupId", "groupName", "id", "manufactorIdStr", "modelIdStr", "posDesc", "recorderSpeed", "speed", "sysType", "traceno", "versions"],
+    requiredRawRowFields: ["alarmName", "alarmTime", "carId", "certColorName", "certId", "cityName", "countyName", "groupId", "groupName", "id", "traceno"],
     fieldAliases: { enterpriseId: "groupId", enterpriseName: "groupName" },
     valueAliases: { "状态": "alarmStatusName", "报警ID": "id", "类型": "sysType", "车牌号": "certId", "终端版本": "versions", "车牌颜色": "certColorName", "驾驶员": "driverName", "报警类型": "alarmName", "报警详情": "detail", "发生时间": "alarmTime", "市州": "cityName", "区县": "countyName", "所属机构": "groupName", "设备厂商": "manufactorIdStr", "设备型号": "modelIdStr", "定位速度(公里/时)": "speed", "仪表盘速度(公里/时)": "recorderSpeed", "车型类型": "sysType", "接收时间": "traceno", "处置时间": "dispositionTime", "处置人": "dispositionOperid", "处置方式": "dispositionMode", "处置内容": "dispositionText", "报警地址": "posDesc" },
-    fieldSignature: "194340eff56f4deab4e3452e5ae77b38610612b146317a6ca5a87cbbaf4a56a4",
+    fieldSignature: "e435140a0fef1f2024af8d689ed6315b193a0963337695de61c1ee9603864ef5",
   }),
   VEHICLE_BASE_INFO: verified("VEHICLE_BASE_INFO", {
     route: "#/report-center/vehicle-mes",
