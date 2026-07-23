@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
-async function loadRuntime() {
+async function loadRuntime(fetchImpl = null) {
   const source = await readFile(new URL("../platform-action-runtime.js", import.meta.url), "utf8");
   const context = {
     AbortController,
@@ -11,6 +11,7 @@ async function loadRuntime() {
     Date,
     Promise,
     Uint8Array,
+    fetch: fetchImpl,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     clearTimeout,
     setTimeout,
@@ -19,6 +20,31 @@ async function loadRuntime() {
   vm.runInNewContext(source, context);
   return context.HnPlatformActionRuntime;
 }
+
+test("默认平台fetch保持原生调用上下文", async () => {
+  const runtime = await loadRuntime(function strictFetch() {
+    "use strict";
+    assert.equal(this, undefined);
+    return response({ success: true, data: {} });
+  });
+  const event = approvedEvent();
+  const result = await runtime.execute({
+    operation: "TEXT",
+    actionId: "action:native-fetch-context",
+    renderedText: runtime.SPEEDING_TEXT,
+    authorization: "Bearer test-token",
+    event,
+    ruleAuthorization: ruleAuthorization(),
+  }, {
+    documentRef: platformDocument(event),
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    AbortControllerImpl: AbortController,
+    setTimeoutImpl: setTimeout,
+    clearTimeoutImpl: clearTimeout,
+    sleepImpl: async () => {},
+  });
+  assert.equal(result.status, "SUCCEEDED");
+});
 
 function platformDocument(event) {
   const cells = [
