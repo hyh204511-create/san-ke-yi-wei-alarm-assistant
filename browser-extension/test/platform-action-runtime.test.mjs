@@ -203,6 +203,63 @@ test("真实语音只调用固定接口并按40毫秒PCM分片形成明确回执
   assert.deepEqual(sockets[0].sent, [640, 640]);
 });
 
+test("语音成功后报警行刷新消失仍可沿用同车同报警连续观察执行文本", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const documentRef = platformDocument(event);
+  const originalQuerySelectorAll = documentRef.querySelectorAll.bind(documentRef);
+  let voiceFinished = false;
+  documentRef.querySelectorAll = (selector) => {
+    if (voiceFinished && selector === "table tbody tr,tr.ve-table-body-tr") return [];
+    return originalQuerySelectorAll(selector);
+  };
+  class FakeSocket {
+    constructor() { this.readyState = 1; queueMicrotask(() => this.onopen?.()); }
+    send() {}
+    close() { this.readyState = 3; }
+  }
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url === runtime.ENDPOINTS.voiceStart) {
+      return response({ success: true, data: [{ httpUrl: "wss://voice.invalid/session", fileName: "opaque-file" }] });
+    }
+    return response({ success: true, data: {} });
+  };
+  const dependencies = {
+    documentRef,
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    fetchImpl,
+    WebSocketImpl: FakeSocket,
+    AbortControllerImpl: AbortController,
+    setTimeoutImpl: setTimeout,
+    clearTimeoutImpl: clearTimeout,
+    sleepImpl: async () => {},
+    rowReadyTimeoutMs: 10,
+  };
+  const voice = await runtime.execute({
+    operation: "VOICE", actionId: "action:continuity-voice", event,
+    ruleAuthorization: ruleAuthorization(), authorization: "Bearer test-token",
+    pcmBase64: Buffer.alloc(1280, 1).toString("base64"),
+  }, dependencies);
+  assert.equal(voice.status, "SUCCEEDED");
+  voiceFinished = true;
+  const text = await runtime.execute({
+    operation: "TEXT", actionId: "action:continuity-text", renderedText: runtime.SPEEDING_TEXT,
+    event, ruleAuthorization: ruleAuthorization(), authorization: "Bearer test-token",
+  }, dependencies);
+  assert.equal(text.status, "SUCCEEDED");
+  assert.equal(calls.includes(runtime.ENDPOINTS.textSend), true);
+  const otherAlarm = await runtime.execute({
+    operation: "TEXT", actionId: "action:other-alarm", renderedText: runtime.SPEEDING_TEXT,
+    event: { ...event, alarmId: "2079948988450365449" },
+    ruleAuthorization: ruleAuthorization(), authorization: "Bearer test-token",
+  }, dependencies);
+  assert.equal(otherAlarm.status, "BLOCKED");
+  assert.equal(otherAlarm.errorCode, "ALARM_ROW_NOT_FOUND");
+  assert.equal(calls.filter((url) => url === runtime.ENDPOINTS.textSend).length, 1);
+});
+
 test("文本和终端TTS与平台已处理登记保持两个独立受控阶段", async () => {
   const runtime = await loadRuntime();
   const event = approvedEvent();

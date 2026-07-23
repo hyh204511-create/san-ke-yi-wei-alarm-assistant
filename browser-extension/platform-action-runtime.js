@@ -6,10 +6,33 @@
     textSend: "/api/gpsp-service/sendCar/sendCarMessage",
     markProcessed: "/api/alarm-service/alarm/center/positiveAlarm",
   });
+  const preparedContinuity = new Map();
+  const PREPARED_CONTINUITY_TTL_MS = 180000;
   const SPEEDING_TEXT = "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。";
 
   function cleanText(value) {
     return String(value ?? "").replace(/\s+/g, " ").trim();
+  }
+
+  function continuityKey(event) {
+    return `${String(event?.alarmId || "")}|${String(event?.vehicleId || "")}`;
+  }
+
+  function rememberPreparedContinuity(event) {
+    const key = continuityKey(event);
+    if (!key || key === "|") return;
+    const now = Date.now();
+    preparedContinuity.set(key, { vehicleNo: String(event.vehicleNo || ""), verifiedAt: now });
+    for (const [entryKey, entry] of preparedContinuity) {
+      if (now - entry.verifiedAt > PREPARED_CONTINUITY_TTL_MS) preparedContinuity.delete(entryKey);
+    }
+    while (preparedContinuity.size > 32) preparedContinuity.delete(preparedContinuity.keys().next().value);
+  }
+
+  function hasRecentPreparedContinuity(event) {
+    const entry = preparedContinuity.get(continuityKey(event));
+    if (!entry || Date.now() - entry.verifiedAt > PREPARED_CONTINUITY_TTL_MS) return false;
+    return normalizedPlate(entry.vehicleNo) === normalizedPlate(event.vehicleNo);
   }
 
   function safeRuntimeException(error) {
@@ -400,14 +423,23 @@
         || !cleanText(request.ruleAuthorization.ruleSetVersion)) {
         return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
       }
-      const prepared = await prepareVehicle(
-        context.documentRef,
-        request.event,
-        context.sleepImpl,
-        context.rowReadyTimeoutMs
-      );
+      const followupContinuity = request.operation !== "VOICE"
+        && hasRecentPreparedContinuity(request.event)
+        && monitorShowsVehicle(context.documentRef, request.event.vehicleNo);
+      const prepared = followupContinuity
+        ? { status: "SUCCEEDED", continuity: "VOICE_PREPARED" }
+        : await prepareVehicle(
+          context.documentRef,
+          request.event,
+          context.sleepImpl,
+          context.rowReadyTimeoutMs
+        );
       if (prepared.status !== "SUCCEEDED") return prepared;
-      if (request.operation === "VOICE") return executeVoice(request, context);
+      if (request.operation === "VOICE") {
+        const result = await executeVoice(request, context);
+        if (result.status === "SUCCEEDED") rememberPreparedContinuity(request.event);
+        return result;
+      }
       if (request.operation === "TEXT") return executeText(request, context);
       if (request.operation === "MARK_PROCESSED") return executeMarkProcessed(request, context);
       return { status: "BLOCKED", errorCode: "OPERATION_NOT_ALLOWED" };
