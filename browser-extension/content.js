@@ -479,7 +479,7 @@
         <main class="view settings hidden"></main>
         <main class="view event-detail hidden"></main>
       </div>
-      <footer class="foot">默认演练模式 · 真实动作仅限明确确认的当前单条报警</footer>
+      <footer class="foot">真实自动运行 · 异常立即停止并转人工</footer>
     </section>`;
 
   function mount() {
@@ -541,7 +541,7 @@
     const identityName = identity.authenticated ? identity.displayName : "未登录";
     const identityRoles = identity.authenticated ? (identity.roles || []).join(" / ") || "未分配角色" : identity.code || "身份服务不可用";
     const shiftLabel = identity.activeShift ? `${identity.activeShift.workstationId} · 已认领` : "未认领";
-    const mode = dashboard.settings.mode === "LIVE" ? "真实动作" : dashboard.settings.mode === "SANDBOX" ? "沙箱动作" : "演练模式";
+    const mode = "真实自动运行";
     const platformSession = dashboard.platformSession || {};
     const pendingSources = (platformSession.recoveryPendingSources || []).map((source) => ({ "realtime-alarms": "实时报警", "technical-alarms": "技术检测" })[source] || source);
     const platformLabel = platformSession.status === "AUTHENTICATED" ? (platformSession.recoveryRequired ? "已登录·待补采" : "已登录") : platformSession.status === "LOGIN_REQUIRED" ? "需要重新登录" : "状态待确认";
@@ -554,11 +554,7 @@
     const notifications = Array.isArray(dashboard.notifications) ? dashboard.notifications : [];
     const keepalivePolicy = keepalive.policy || {};
     const keepaliveLabel = keepalivePolicy.enabled ? `已启用 · ${keepalivePolicy.intervalMinutes}分钟` : "未启用";
-    const warning = dashboard.settings.mode === "LIVE"
-      ? `<div class="notice bad">已选择真实动作模式，但当前构建仍会阻断平台调用，等待客户授权和测试车辆联调。</div>`
-      : dashboard.settings.mode === "SANDBOX"
-        ? `<div class="notice">当前为沙箱动作模式，自动规则按已发布规则模拟“文本下发 + 终端 TTS”或“自动语音对讲”；真实动作需测试车辆联调。</div>`
-      : `<div class="notice ok">当前为演练模式，规则会运行并留痕，但不会连接真实车辆。</div>`;
+    const warning = `<div class="notice bad">当前只运行真实场景。符合已发布规则的新报警会自动取得全局租约并执行；权限、凭证、字段或回执不完整时立即停止并转人工。</div>`;
     const notificationNotice = notifications.length
       ? `<div class="notice bad">有 ${notifications.length} 条动作需要人工处理：${escapeHtml(notifications.slice(0, 3).map((item) => item.message).join("；"))}</div>`
       : "";
@@ -606,7 +602,7 @@
       <button class="source-tab ${alarmView === "TECHNICAL" ? "active" : ""}" data-source="TECHNICAL">技术检测 ${counts.TECHNICAL}</button>
       <button class="source-tab ${alarmView === "PREWARNING" ? "active" : ""}" data-source="PREWARNING">预报警 ${counts.PREWARNING}</button>
       <button class="source-tab ${alarmView === "all" ? "active" : ""}" data-source="all">全部 ${items.length}</button>
-    </div><div class="notice">预报警来自省平台实时监控页的“预警列表”或“预警查询”页面，原始来源始终保留为PREWARNING；默认只展示和入库，只有值班员在详情中明确确认的当前一条超速预报警可进入限时真实动作测试：${escapeHtml(prewarningFreshness)}。</div><div class="list">${visibleItems.length ? visibleItems.map((item) => {
+    </div><div class="notice">预报警原始来源始终保留为 PREWARNING；新发生且字段完整的超速预警按真实自动规则处理，其他未发布规则只记录或转人工：${escapeHtml(prewarningFreshness)}。</div><div class="list">${visibleItems.length ? visibleItems.map((item) => {
       const event = item.event;
       const technicalSummary = event.sourceKind === "TECHNICAL" ? event.technicalDetails?.detail : null;
       return `<button class="card event-card" data-id="${escapeHtml(event.eventId)}"><div class="row"><span class="title">${escapeHtml(event.vehicleNo || "未知车辆")}</span><span>${actionBadge(item)} ${reminderBadge(item)} ${completionBadge(item)}</span></div><div>${escapeHtml(event.alarmName || "未知报警")}</div>${technicalSummary ? `<div class="technical-summary">${escapeHtml(technicalSummary)}</div>` : ""}<div class="muted"><span class="source-label">${escapeHtml(alarmViewHelpers.displaySourceLabel(event))}</span> · ${escapeHtml(event.alarmTime || event.discoveredAt || "-")} · ${escapeHtml(event.companyName || "企业待补")}</div></button>`;
@@ -630,8 +626,6 @@
       ${kv("报警来源", event.sourceLabel)}${kv("来源接口", (event.sourceEndpoints || [event.rawEndpoint]).join("、"))}${kv("车牌", event.vehicleNo)}${kv("驾驶员", event.driverName)}${kv("企业", event.companyName)}${kv("报警ID", event.alarmId)}${kv("报警类型", event.alarmName)}${kv("报警时间", event.alarmTime)}${kv("位置", event.location)}${kv("速度", event.locationSpeed == null ? null : `${event.locationSpeed} km/h`)}${kv("平台状态", event.platformStatus)}${kv("报警状态", event.alarmStatus)}${kv("完成状态", event.alarmCompleteStatus)}${kv("处理标记", event.dealFlag)}${kv("事件状态", event.state)}${kv("系统处理状态", item.processing?.status || item.action?.processingStatus || "UNPROCESSED")}${kv("处理状态来源", item.processing?.source)}${kv("处理状态时间", item.processing?.markedAt)}${technicalDetailRows(event)}${kv("规则版本", item.decision?.ruleSetVersion)}${kv("命中规则", item.decision?.ruleId)}${kv("处理方式", item.decision?.action)}${kv("提醒分类", item.decision?.reminderPolicy?.category)}${kv("司机提醒", item.decision?.reminderPolicy?.driverReminder)}${kv("第二渠道", item.decision?.reminderPolicy?.secondaryChannelMode)}${kv("响应渠道", (item.decision?.channels || []).map((channel) => channel.type).join(item.decision?.channelStrategy === "PARALLEL" ? " ＋ " : " → "))}${kv("判断原因", item.decision?.reason)}${kv("完成判定", item.event?.completionAssessment?.status)}${kv("完成判定说明", item.event?.completionAssessment?.reason)}${kv("动作状态", item.action?.status)}${kv("渠道结果", (item.action?.attempts || []).map((attempt) => `${attempt.channelType}:${attempt.status}（重试${attempt.retryCount || 0}次）`).join("；"))}${kv("固定话术", (item.action?.attempts || []).map((attempt) => attempt.renderedText).filter(Boolean).join("；"))}${kv("失败原因", item.action?.error || item.action?.blockers?.join("；"))}${kv("处置工单", disposal?.status || (item.disposalSyncError ? "同步失败" : "未创建"))}${kv("工单负责人", disposal?.assignedTo)}${kv("字段冲突", Object.keys(visibleConflicts).length ? JSON.stringify(visibleConflicts) : "无")}
       ${item.disposalSyncError ? `<div class="notice bad">处置工单同步失败：${escapeHtml(item.disposalSyncError)}</div>` : ""}
       ${disposalControls(item)}
-      ${hasPermission("action.execute") && hasActiveShift() && dashboard.settings.mode === "LIVE" && event.sourceKind === "PREWARNING" && event.alarmName === "超速驾驶" && !item.action?.testPromotion && item.action?.status !== "SUCCEEDED" ? `<button class="arm-speeding-test danger" style="width:100%;padding:9px;margin-top:9px">执行当前一条超速预警真实测试</button>` : ""}
-      ${hasPermission("action.retry") && hasActiveShift() && item.decision?.action === "AUTO_VOICE" && ["FAILED", "UNKNOWN", "BLOCKED"].includes(item.action?.status) ? `<button class="retry-action warn" style="width:100%;padding:8px;margin-top:9px">确认后重新执行语音</button>` : ""}
       ${hasPermission("disposal.note") && hasActiveShift() ? `<div class="note-row"><input class="note-input" maxlength="300" placeholder="添加实名值班备注"><button class="save-note">保存</button></div>` : `<div class="notice">${hasPermission("disposal.note") ? "请先在助手身份页认领当前班次。" : "当前实名角色无备注权限，事件保持只读。"}</div>`}
     </div>`;
     detail.querySelector(".back").addEventListener("click", () => showView("events"));
@@ -642,23 +636,6 @@
       input.value = "";
       await refresh();
       showEvent(eventId);
-    });
-    detail.querySelector(".retry-action")?.addEventListener("click", async () => {
-      const confirmed = window.confirm(`将重新执行 ${event.vehicleNo || "该车辆"} 的固定语音动作。是否继续？`);
-      if (!confirmed) return;
-      const response = await runtimeSendMessage({ type: "RETRY_ACTION", eventId });
-      await refresh(); showEvent(eventId);
-      if (!response.ok) window.alert(response.error || "重新执行失败");
-    });
-    detail.querySelector(".arm-speeding-test")?.addEventListener("click", async () => {
-      const confirmed = window.confirm(
-        `即将只对当前报警执行真实动作：${event.vehicleNo || "当前车辆"} · 超速驾驶 · ${event.alarmTime || ""}。插件将自动进入车辆监控，先发送固定语音，再发送文本和终端TTS，并在平台登记已处理。是否确认？`
-      );
-      if (!confirmed) return;
-      const response = await runtimeSendMessage({ type: "ARM_SPEEDING_PREWARNING_TEST", eventId, confirmed: true });
-      await refresh();
-      showEvent(eventId);
-      if (!response?.ok) window.alert(response?.error || "当前单条真实测试未完成，已停止并转人工");
     });
     detail.querySelector(".takeover-case")?.addEventListener("click", () => mutateDisposal(eventId, "takeover", {}));
     detail.querySelector(".complete-case")?.addEventListener("click", async () => {
@@ -749,10 +726,8 @@
     target.innerHTML = `<div class="form">
       <div class="notice ${dashboard.identity?.authenticated ? "" : "bad"}">${dashboard.identity?.authenticated ? `当前实名用户：${escapeHtml(dashboard.identity.displayName)}。权限由助手服务端控制。` : `尚未登录实名助手账号，当前仅允许只读采集。`}</div>
       <label>助手服务器地址<input class="assistant-base" value="${escapeHtml(settings.assistantBase || "http://127.0.0.1:18080/assistant")}" ${disabledConfigure}><small>本机允许 HTTP；远程服务器必须使用 HTTPS 并以 /assistant 结尾。</small></label>
-      <label>运行模式<select class="mode" ${disabledConfigure}><option value="DRY_RUN" ${settings.mode === "DRY_RUN" ? "selected" : ""}>演练模式</option><option value="SANDBOX" ${settings.mode === "SANDBOX" ? "selected" : ""}>沙箱动作</option><option value="LIVE" ${settings.mode === "LIVE" ? "selected" : ""}>真实动作</option></select><small>需要 system.configure 权限；真实动作仍受测试车辆与平台适配器闸门限制。</small></label>
-      <label>车辆白名单<textarea class="allowlist" placeholder="每行一个车辆ID或车牌" ${disabledConfigure}>${escapeHtml((settings.vehicleAllowlist || []).join("\n"))}</textarea></label>
+      <div class="notice bad">运行方式固定为“真实自动运行”，不提供演练、沙箱或手工触发模式。</div>
       <label>定点弹窗选择器<textarea class="popup-selectors" placeholder="每行一个已验证的CSS选择器" ${disabledConfigure}>${escapeHtml((settings.popupSelectors || []).join("\n"))}</textarea><small>留空时不扫描DOM；只监听配置的目标容器。</small></label>
-      <label class="check"><input type="checkbox" class="verified" ${settings.intercom.verified ? "checked" : ""} ${disabledConfigure}>平台对讲调用链已经在测试车辆上验证</label>
       <button class="save-settings primary" ${disabledConfigure}>保存运行设置</button>
       <div class="settings-result muted"></div>
       <div class="notice">运行规则只从后台规则治理中心同步，插件不再接受本地 JSON 或音频导入。当前来源：${escapeHtml(dashboard.ruleSet.source || "未知")}；${dashboard.ruleSet.lastError ? `最近同步提示：${escapeHtml(dashboard.ruleSet.lastError)}` : "已同步后台发布版本。"}</div>
@@ -769,16 +744,10 @@
 
   async function saveSettings() {
     const target = shadow.querySelector(".settings");
-    const mode = target.querySelector(".mode").value;
-    if (mode === "LIVE" && dashboard.settings.mode !== "LIVE") {
-      const confirmed = window.confirm("即将开启真实动作，并授权插件在15分钟内自动选择最新、尚未处理的一条超速预警执行一次真实测试：固定语音 → 固定文本/TTS → 平台登记已处理。授权使用后立即失效，不会批量处理历史预警；失败、超时或结果未知将转人工。是否继续？");
-      if (!confirmed) { target.querySelector(".mode").value = dashboard.settings.mode; return; }
-    }
-    const vehicleAllowlist = target.querySelector(".allowlist").value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean);
     const popupSelectors = target.querySelector(".popup-selectors").value.split(/\n/).map((item) => item.trim()).filter(Boolean);
     const assistantBase = target.querySelector(".assistant-base").value.trim();
     try {
-      const response = await runtimeSendMessage({ type: "SETTINGS_UPDATE", settings: { assistantBase, mode, vehicleAllowlist, popupSelectors, intercom: { verified: target.querySelector(".verified").checked } } });
+      const response = await runtimeSendMessage({ type: "SETTINGS_UPDATE", settings: { assistantBase, popupSelectors } });
       if (!response?.ok) return setResult(`保存失败：${response?.error || "扩展后台未返回结果"}`, false);
       settingsDirty = false;
       await refresh();

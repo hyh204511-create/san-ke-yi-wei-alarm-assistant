@@ -37,7 +37,8 @@ export function defaultPlatformSession() {
     platformIdentityStatus: "UNKNOWN",
     platformVisibleScopeHash: "",
     platformPermissionSummary: {},
-    platformIdentityObservedAt: null
+    platformIdentityObservedAt: null,
+    tabId: null
   };
 }
 

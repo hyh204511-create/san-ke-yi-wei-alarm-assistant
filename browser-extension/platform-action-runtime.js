@@ -278,6 +278,15 @@
       subCode: "0",
     }, context);
     if (sent.status !== "SUCCEEDED") return sent;
+    return {
+      status: "SUCCEEDED",
+      receiptRef: request.actionId,
+      terminalTts: true,
+      platformHttpStatus: sent.platformHttpStatus,
+    };
+  }
+
+  async function executeMarkProcessed(request, context) {
     const processed = await postJson(ENDPOINTS.markProcessed, {
       id: request.event.alarmId,
       alarmTime: request.event.alarmTime,
@@ -290,7 +299,7 @@
     return {
       status: "SUCCEEDED",
       receiptRef: request.actionId,
-      terminalTts: true,
+      processingStatus: "PROCESSED",
       platformHttpStatus: processed.platformHttpStatus,
     };
   }
@@ -315,6 +324,7 @@
     if (prepared.status !== "SUCCEEDED") return prepared;
     if (request.operation === "VOICE") return executeVoice(request, context);
     if (request.operation === "TEXT") return executeText(request, context);
+    if (request.operation === "MARK_PROCESSED") return executeMarkProcessed(request, context);
     return { status: "BLOCKED", errorCode: "OPERATION_NOT_ALLOWED" };
   }
 

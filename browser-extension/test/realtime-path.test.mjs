@@ -44,7 +44,7 @@ test("百条正式报警的本地规则决策和TEXT_TTS计划低于一秒", () 
   for (let index = 0; index < 100; index += 1) {
     const event = { eventId: `event-${index}`, alarmId: String(index), sourceKind: "REALTIME", alarmName: "模拟正式报警", vehicleId: `vehicle-${index}` };
     const decision = evaluateRules(event, ruleSet);
-    const plan = createResponsePlan(event, decision, { mode: "SANDBOX" }, assets);
+    const plan = createResponsePlan(event, decision, { automaticRealActions: true }, assets);
     assert.equal(plan.status, "PLANNED");
   }
   assert.ok(performance.now() - started < 1000);

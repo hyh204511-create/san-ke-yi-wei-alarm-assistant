@@ -119,17 +119,11 @@ test("真实语音只调用固定接口并按40毫秒PCM分片形成明确回执
   assert.deepEqual(sockets[0].sent, [640, 640]);
 });
 
-test("文本和终端TTS成功后才调用平台已处理登记", async () => {
+test("文本和终端TTS与平台已处理登记保持两个独立受控阶段", async () => {
   const runtime = await loadRuntime();
   const event = approvedEvent();
   const calls = [];
-  const result = await runtime.execute({
-    operation: "TEXT",
-    actionId: "action:test-text",
-    renderedText: runtime.SPEEDING_TEXT,
-    authorization: "Bearer test-token",
-    event,
-  }, {
+  const dependencies = {
     documentRef: platformDocument(event),
     locationRef: { hash: "#/vehicle-monitor/real-time" },
     fetchImpl: async (url, options) => {
@@ -140,15 +134,27 @@ test("文本和终端TTS成功后才调用平台已处理登记", async () => {
     setTimeoutImpl: setTimeout,
     clearTimeoutImpl: clearTimeout,
     sleepImpl: async () => {},
-  });
+  };
+  const result = await runtime.execute({
+    operation: "TEXT",
+    actionId: "action:test-text",
+    renderedText: runtime.SPEEDING_TEXT,
+    authorization: "Bearer test-token",
+    event,
+  }, dependencies);
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(result.terminalTts, true);
-  assert.deepEqual(calls.map((item) => item.url), [
-    runtime.ENDPOINTS.textSend,
-    runtime.ENDPOINTS.markProcessed,
-  ]);
+  assert.deepEqual(calls.map((item) => item.url), [runtime.ENDPOINTS.textSend]);
   assert.equal(calls[0].body.msgContent, runtime.SPEEDING_TEXT);
   assert.equal(calls[0].body.tts, "1");
+  const processed = await runtime.execute({
+    operation: "MARK_PROCESSED",
+    actionId: "action:test-processed",
+    authorization: "Bearer test-token",
+    event,
+  }, dependencies);
+  assert.equal(processed.status, "SUCCEEDED");
+  assert.deepEqual(calls.map((item) => item.url), [runtime.ENDPOINTS.textSend, runtime.ENDPOINTS.markProcessed]);
   assert.equal(calls[1].body.id, event.alarmId);
 });
 

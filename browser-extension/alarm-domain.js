@@ -54,7 +54,7 @@ export function selectLatestEligibleSpeedingPrewarning(items, nowMs = Date.now()
       && /^\d{10,30}$/.test(String(event?.alarmId || ""))
       && Boolean(event?.vehicleId && event?.vehicleNo)
       && event?.certColor !== null && event?.certColor !== undefined && event?.certColor !== ""
-      && event?.testPromotion !== true
+      && event?.automaticPromotion !== true
       && !item?.action
       && item?.processing?.status !== "PROCESSED"
       && eventTime > 0 && eventTime <= nowMs + 60_000 && nowMs - eventTime <= maxAgeMs;
@@ -647,12 +647,15 @@ export function evaluateCompletion(event, ruleOrPolicy = {}) {
 }
 
 export function evaluateRules(event, ruleSet) {
-  if (["PREWARNING", "HISTORY"].includes(event?.sourceKind)) {
-    const reasons = {
-      PREWARNING: "预报警由平台实时产生并由平台判断是否升级为正式报警；插件只展示、入库和报表，不向司机下发",
-      HISTORY: "报警查询和历史记录只用于复盘、核验和报表，不触发实时响应",
-    };
-    return decision(event, ruleSet, null, "RECORD_ONLY", reasons[event.sourceKind]);
+  if (event?.sourceKind === "HISTORY") {
+    return decision(event, ruleSet, null, "RECORD_ONLY", "报警查询和历史记录只用于复盘、核验和报表，不触发实时响应");
+  }
+  if (event?.sourceKind === "PREWARNING") {
+    if (ruleSet?.schemaVersion === 2 && ruleSet?.status === "PUBLISHED") {
+      const publishedDecision = evaluateSchemaV2Rules(event, ruleSet);
+      if (publishedDecision.action === "RESPONSE_PLAN") return publishedDecision;
+    }
+    return decision(event, ruleSet, null, "RECORD_ONLY", "预报警只有命中后台已发布且明确包含PREWARNING来源的规则时才执行真实动作");
   }
   if (event?.sourceKind === "DETAIL") {
     return decision(event, ruleSet, null, "RECORD_ONLY", "报警详情仅用于补齐字段和证据，不独立触发响应");
@@ -687,6 +690,7 @@ function evaluateSchemaV2Rules(event, ruleSet) {
   const candidates = (ruleSet?.rules || []).filter((rule) => {
     if (!rule.enabled || rule.handlingMode === "DISABLED") return false;
     const match = rule.match || {};
+    if (event?.sourceKind === "PREWARNING" && !(Array.isArray(match.sourceKinds) && match.sourceKinds.includes("PREWARNING"))) return false;
     if (Array.isArray(match.sourceKinds) && match.sourceKinds.length && !match.sourceKinds.includes(event.sourceKind)) return false;
     const idConfigured = Array.isArray(match.alarmTypeIds) && match.alarmTypeIds.length > 0;
     const nameConfigured = [...(match.alarmNames || []), ...(match.alarmAliases || [])].length > 0;
@@ -715,6 +719,7 @@ function evaluateSchemaV2Rules(event, ruleSet) {
 function decision(event, ruleSet, rule, action, reason) {
   const decidedAt = new Date().toISOString();
   const reminderPolicy = rule ? reminderPolicyForRule(rule) : null;
+  const automaticPromotion = event?.sourceKind === "PREWARNING" && action === "RESPONSE_PLAN";
   return {
     decisionId: `decision:${stableHash(`${event.eventId}|${ruleSet?.version || "none"}`)}`,
     eventId: event.eventId,
@@ -722,6 +727,8 @@ function decision(event, ruleSet, rule, action, reason) {
     ruleId: rule?.id || null,
     action,
     reason,
+    automaticPromotion,
+    effectiveActionKind: automaticPromotion ? "AUTOMATIC_FORMAL" : null,
     voiceTemplateId: rule?.voiceTemplateId || null,
     audioAssetId: rule?.audioAssetId || null,
     allowRealIntercom: Boolean(rule?.allowRealIntercom),
@@ -753,77 +760,11 @@ function renderFixedText(template, event) {
   return { text, missing };
 }
 
-export function createSpeedingPrewarningTestDecision(event) {
-  if (
-    event?.sourceKind !== "PREWARNING"
-    || String(event?.alarmName || "").trim() !== "超速驾驶"
-    || !/^\d{10,30}$/.test(String(event?.alarmId || ""))
-    || !event?.vehicleId
-    || !event?.vehicleNo
-    || event?.certColor === null
-    || event?.certColor === undefined
-    || event?.certColor === ""
-  ) {
-    throw new TypeError("当前事件不是具备平台ID和车辆标识的超速预报警");
-  }
-  const decidedAt = new Date().toISOString();
-  return {
-    decisionId: `decision:test-speeding:${event.alarmId}`,
-    eventId: event.eventId,
-    ruleSetVersion: "test-speeding-prewarning-v1",
-    ruleId: "test-current-speeding-prewarning",
-    action: "RESPONSE_PLAN",
-    reason: "用户明确授权当前单条超速预报警进行真实语音与文本测试；原始来源仍保留为PREWARNING",
-    allowRealIntercom: true,
-    requireVehicleAllowlist: false,
-    failureAction: "MANUAL_REVIEW",
-    testPromotion: true,
-    effectiveActionKind: "TEST_FORMAL",
-    reminderPolicy: {
-      category: "DRIVER_IMMEDIATE",
-      driverReminder: "VOICE_REQUIRED",
-      secondaryChannelMode: "AFTER_PRIMARY_SUCCESS",
-      completion: { source: "MANUAL_CONFIRMATION", fields: [], clearedValues: {}, unknownAction: "MANUAL_REVIEW" },
-    },
-    completionAssessment: {
-      status: "UNKNOWN_MANUAL",
-      source: "MANUAL_CONFIRMATION",
-      reason: "本次测试只以下发成功为已处理，不由插件判断司机是否已经降速",
-      manualRequired: true,
-      observedFields: [],
-    },
-    channels: [
-      {
-        type: "VOICE",
-        order: 1,
-        recipientType: "DRIVER",
-        assetId: "voice-speeding-v1",
-        spokenTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。",
-      },
-      {
-        type: "TEXT",
-        order: 2,
-        recipientType: "DRIVER",
-        templateId: "text-speeding-v1",
-        terminalTts: true,
-      },
-    ],
-    channelStrategy: "SEQUENTIAL",
-    retryPolicy: { maxRetries: 0, delaysMs: [], retryOn: [], maxDurationMs: 30000 },
-    fallback: "TEXT_ON_VOICE_FAILURE",
-    decidedAt,
-  };
-}
-
 export function createResponsePlan(event, decision, settings, responseAssets = {}) {
   const assets = runtimeAssetMap(responseAssets);
-  const mode = settings.mode === "SANDBOX" ? "SANDBOX" : settings.mode === "LIVE" ? "LIVE" : "DRY_RUN";
+  const mode = "LIVE";
   const createdAt = new Date().toISOString();
-  const testAuthorization = settings?.prewarningTest || {};
-  const testAuthorized = decision.testPromotion === true
-    && testAuthorization.targetEventId === event.eventId
-    && Boolean(testAuthorization.approvedAt)
-    && Date.parse(testAuthorization.expiresAt || "") > Date.now();
+  const automaticExecutionAuthorized = settings?.automaticRealActions === true;
   const attempts = (decision.channels || []).map((channel) => {
     const assetKey = channel.type === "TEXT" ? channel.templateId : channel.assetId;
     const asset = assets[assetKey];
@@ -832,7 +773,7 @@ export function createResponsePlan(event, decision, settings, responseAssets = {
     if (channel.type === "VOICE" && mode === "LIVE" && decision.allowRealIntercom !== true) blockers.push("规则未授权真实自动语音对讲");
     if (!asset || asset.channelType !== channel.type) blockers.push("已发布响应资产不存在或类型不匹配");
     if (!event.vehicleId && !event.vehicleNo) blockers.push("缺少车辆标识");
-    if (mode === "LIVE" && !testAuthorized) blockers.push("真实文本和语音适配器尚未完成授权联调");
+    if (!automaticExecutionAuthorized) blockers.push("真实自动动作策略未启用");
     let renderedText = null;
     if (channel.type === "TEXT" && asset) {
       const rendered = renderFixedText(asset.textTemplate, event);
@@ -883,7 +824,7 @@ export function createResponsePlan(event, decision, settings, responseAssets = {
     attempts,
     channelStrategy: decision.channelStrategy || (attempts.length <= 1 ? "SINGLE" : "SEQUENTIAL"),
     fallback: decision.fallback || "MANUAL",
-    testPromotion: decision.testPromotion === true,
+    automaticPromotion: decision.automaticPromotion === true,
     effectiveActionKind: decision.effectiveActionKind || null,
     createdAt,
     updatedAt: createdAt,
@@ -894,19 +835,15 @@ export function createResponsePlan(event, decision, settings, responseAssets = {
 }
 
 export function createActionAttempt(event, decision, settings, audioAsset) {
-  const liveRequested = settings.mode === "LIVE";
-  const sandboxRequested = settings.mode === "SANDBOX";
+  const liveRequested = true;
   const vehicleKey = event.vehicleId || event.vehicleNo;
-  const allowlisted = Boolean(vehicleKey && (settings.vehicleAllowlist || []).includes(vehicleKey));
   const blockers = [];
   if (decision.action !== "AUTO_VOICE") blockers.push("规则未选择自动语音");
   if (decision.action === "AUTO_VOICE" && !vehicleKey) blockers.push("缺少车辆标识，无法执行对讲");
-  if (decision.action === "AUTO_VOICE" && sandboxRequested && !event.alarmId) blockers.push("沙箱对讲缺少报警ID");
   if (!audioAsset?.confirmed) blockers.push("固定音频未确认或不存在");
   if (liveRequested && !decision.allowRealIntercom) blockers.push("规则不允许真实对讲");
-  if (liveRequested && decision.requireVehicleAllowlist && !allowlisted) blockers.push("车辆不在真实动作白名单");
   if (liveRequested && !settings.intercom?.verified) blockers.push("平台对讲调用链尚未验证");
-  const mode = sandboxRequested ? "SANDBOX" : liveRequested ? "LIVE" : "DRY_RUN";
+  const mode = "LIVE";
   const createdAt = new Date().toISOString();
   return {
     actionId: `action:${stableHash(`${decision.decisionId}|${mode}`)}`,

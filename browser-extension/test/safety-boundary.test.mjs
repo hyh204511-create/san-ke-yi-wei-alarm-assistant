@@ -2,25 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("真实动作执行器保持在隔离内容脚本且只允许当前超速预警固定接口", async () => {
+test("真实动作执行器保持在隔离内容脚本且只允许已发布超速预警固定接口", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../platform-action-runtime.js", import.meta.url), "utf8");
   const pageHook = await readFile(new URL("../page-hook.js", import.meta.url), "utf8");
-  const sandboxAdapter = await readFile(new URL("../sandbox-intercom.js", import.meta.url), "utf8");
   assert.equal(manifest.permissions.includes("scripting"), false);
   assert.equal(manifest.permissions.includes("webRequest"), true);
   assert.doesNotMatch(worker, /chrome\.scripting\.executeScript/);
   assert.doesNotMatch(worker, /new WebSocket/);
-  assert.match(worker, /ARM_SPEEDING_PREWARNING_TEST/);
-  assert.match(worker, /SPEEDING_PREWARNING_ONE_SHOT_SELECTED/);
-  assert.match(worker, /autoArmExpiresAt/);
-  assert.match(content, /15分钟内自动选择最新、尚未处理的一条超速预警执行一次真实测试/);
+  assert.match(worker, /automaticRealActions/);
+  assert.match(worker, /scheduleAutomaticSpeedingResponses/);
+  assert.match(worker, /getCurrentPublishedRuntime/);
+  assert.match(worker, /validateResponsePhase/);
+  assert.match(worker, /platformSession\.tabId !== platformTabId/);
+  assert.match(worker, /MARK_PROCESSED/);
+  assert.doesNotMatch(worker, /DRY_RUN|SANDBOX|ARM_SPEEDING_PREWARNING_TEST|SPEEDING_PREWARNING_ONE_SHOT_SELECTED|autoArmExpiresAt/);
+  assert.doesNotMatch(content, /DRY_RUN|SANDBOX|arm-speeding-test|retry-action|一次真实测试/);
   assert.match(worker, /PLATFORM_REALTIME_NAVIGATE/);
   assert.match(content, /值班值守监控/);
   assert.match(content, /REALTIME_MONITOR_READY/);
-  assert.match(worker, /testPromotion/);
+  assert.match(worker, /automaticPromotion/);
+  assert.match(worker, /reports\/api\/action-leases\/acquire/);
   for (const receiptField of ["processingStatus", "voiceStatus", "textStatus", "fallbackUsed", "bytesSent", "durationMs"]) {
     assert.match(worker, new RegExp(`"${receiptField}"`));
   }
@@ -34,8 +38,6 @@ test("真实动作执行器保持在隔离内容脚本且只允许当前超速�
     "positiveAlarm",
   ]) assert.match(runtime, new RegExp(endpoint));
   assert.doesNotMatch(pageHook, /sendRealAudioTransmissionMessage|sendCarMessage|positiveAlarm|new WebSocket/);
-  assert.match(sandboxAdapter, /http:\/\/127\.0\.0\.1:18080\/sandbox\/api\/intercom\/simulate/);
-  assert.doesNotMatch(sandboxAdapter, /hnznjg\.cn/);
 });
 
 test("省平台只执行平台授权的限定页面查询保活", async () => {
@@ -60,7 +62,7 @@ test("省平台只执行平台授权的限定页面查询保活", async () => {
   assert.match(content, /不会自动填写账号、验证码或处理人机挑战/);
 });
 
-test("扩展只为明确的本机沙箱地址增加权限", async () => {
+test("扩展只为明确的本机助手地址增加权限", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.host_permissions.includes("<all_urls>"), false);
   assert.equal(manifest.host_permissions.includes("http://127.0.0.1:18080/*"), true);
@@ -100,13 +102,14 @@ test("普通值班插件不提供完整JSON导出", async () => {
 test("插件写操作必须通过实名助手权限", async () => {
   const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
-  for (const permission of ["system.configure", "disposal.note", "action.retry"]) {
+  for (const permission of ["system.configure", "disposal.note"]) {
     assert.match(worker, new RegExp(`requireAssistantPermission\\(\\"${permission.replace(".", "\\.")}\\"`));
   }
   assert.match(worker, /credentials: "include"/);
   assert.match(content, /实名登录/);
   assert.match(content, /当前仅允许只读采集/);
   assert.match(worker, /requireShift: true/);
+  assert.doesNotMatch(worker, /RETRY_ACTION|action\.retry/);
   assert.match(worker, /认领当前值班班次/);
   assert.match(content, /hasActiveShift/);
 });
@@ -149,8 +152,8 @@ test("双渠道计划保留独立结果且未知状态禁止自动切换", async
   assert.match(domain, /RESPONSE_PLAN/);
   assert.match(domain, /channelStrategy/);
   assert.match(worker, /前序渠道结果未知或被安全阻断，禁止自动切换渠道/);
-  assert.match(worker, /executeSandboxText/);
-  assert.match(worker, /executeSandboxIntercom/);
+  assert.match(worker, /executeLivePlatformAttempt/);
+  assert.doesNotMatch(worker, /executeSandboxText|executeSandboxIntercom/);
 });
 
 test("服务端处理状态同步到插件详情且刷新不依赖单一布尔值", async () => {
@@ -165,11 +168,11 @@ test("服务端处理状态同步到插件详情且刷新不依赖单一布尔�
   assert.match(content, /处理状态时间/);
 });
 
-test("插件产品文案区分自动TEXT_TTS和人工语音对讲", async () => {
+test("插件产品文案说明真实自动规则和双渠道动作", async () => {
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
-  assert.match(content, /文本下发 \+ 终端 TTS/);
-  assert.match(content, /自动语音对讲/);
+  assert.match(content, /真实自动运行/);
+  assert.match(content, /新发生且字段完整的超速预警按真实自动规则处理/);
   assert.match(readme, /TEXT_TTS/);
   assert.match(readme, /VOICE_INTERCOM/);
 });
@@ -192,7 +195,7 @@ test("正式实时与待处理保留来源证据但在面板归为正式报警",
   assert.doesNotMatch(content, /data-source="PENDING"/);
   assert.match(content, /实时报警/);
   assert.match(content, /待处理/);
-  assert.match(content, /预报警来自省平台实时监控页的“预警列表”或“预警查询”页面/);
+  assert.match(content, /预报警原始来源始终保留为 PREWARNING/);
 });
 
 test("技术检测详情展示诊断字段而不是只显示通用报警字段", async () => {

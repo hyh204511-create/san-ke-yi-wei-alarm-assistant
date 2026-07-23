@@ -7,7 +7,6 @@ import {
   compareAlarmOrder,
   createActionAttempt,
   createResponsePlan,
-  createSpeedingPrewarningTestDecision,
   enterpriseAccessForEvent,
   evaluateCompletion,
   evaluateRules,
@@ -22,11 +21,34 @@ import {
   validateRuleSet
 } from "../alarm-domain.js";
 
+function publishedSpeedingRuleSet() {
+  return {
+    schemaVersion: 2,
+    version: "published-speeding-v1",
+    status: "PUBLISHED",
+    rules: [{
+      id: "automatic-speeding-prewarning",
+      enabled: true,
+      priority: 100,
+      match: { sourceKinds: ["PREWARNING"], alarmNames: ["超速驾驶"] },
+      handlingMode: "AUTO",
+      allowRealIntercom: true,
+      channels: [
+        { type: "VOICE", order: 1, recipientType: "DRIVER", assetId: "voice-speeding-v1", spokenTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。" },
+        { type: "TEXT", order: 2, recipientType: "DRIVER", templateId: "text-speeding-v1", terminalTts: true },
+      ],
+      channelStrategy: "SEQUENTIAL",
+      retryPolicy: { maxRetries: 2, delaysMs: [5000, 10000], retryOn: ["FAILED"], maxDurationMs: 30000 },
+      fallback: "TEXT_ON_VOICE_FAILURE",
+    }],
+  };
+}
+
 test("平台无时区报警时间固定按 Asia/Shanghai 解析", () => {
   assert.equal(alarmEventTime({ alarmTime: "2026-07-23 14:20:00" }), Date.parse("2026-07-23T14:20:00+08:00"));
 });
 
-test("真实模式一次性授权只选择最新且尚未处理的超速预警", () => {
+test("真实自动运行只选择最新且尚未处理的超速预警", () => {
   const now = Date.parse("2026-07-23T14:20:00+08:00");
   const event = (id, alarmTime, overrides = {}) => ({
     eventId: `alarm:id:${id}`, alarmId: id, sourceKind: "PREWARNING", alarmName: "超速驾驶",
@@ -42,7 +64,7 @@ test("真实模式一次性授权只选择最新且尚未处理的超速预警",
   assert.equal(selectLatestEligibleSpeedingPrewarning(rows, now)?.event.alarmId, "2079948988450365402");
 });
 
-test("真实模式一次性授权拒绝过期、未来和缺少车辆标识的预警", () => {
+test("真实自动运行拒绝过期、未来和缺少车辆标识的预警", () => {
   const now = Date.parse("2026-07-23T14:20:00+08:00");
   const rows = [
     { event: { eventId: "old", alarmId: "2079948988450365411", sourceKind: "PREWARNING", alarmName: "超速驾驶", alarmTime: "2026-07-23 14:00:00", vehicleId: "v1", vehicleNo: "模拟01", certColor: "2" } },
@@ -52,7 +74,7 @@ test("真实模式一次性授权拒绝过期、未来和缺少车辆标识的�
   assert.equal(selectLatestEligibleSpeedingPrewarning(rows, now), null);
 });
 
-test("当前单条超速预报警保留PREWARNING来源并生成受控语音后文本计划", () => {
+test("自动超速预报警保留PREWARNING来源并生成语音后文本计划", () => {
   const event = {
     eventId: "alarm:id:2079948988450365440",
     alarmId: "2079948988450365440",
@@ -63,22 +85,15 @@ test("当前单条超速预报警保留PREWARNING来源并生成受控语音后�
     vehicleNo: "模拟车A01",
     certColor: "2",
   };
-  const decision = createSpeedingPrewarningTestDecision(event);
-  assert.equal(decision.testPromotion, true);
-  assert.equal(decision.effectiveActionKind, "TEST_FORMAL");
+  const decision = evaluateRules(event, publishedSpeedingRuleSet());
+  assert.equal(decision.automaticPromotion, true);
+  assert.equal(decision.effectiveActionKind, "AUTOMATIC_FORMAL");
   assert.deepEqual(decision.channels.map((channel) => channel.type), ["VOICE", "TEXT"]);
-  const settings = {
-    mode: "LIVE",
-    prewarningTest: {
-      targetEventId: event.eventId,
-      approvedAt: "2026-07-23T00:10:00+08:00",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    },
-  };
+  const settings = { automaticRealActions: true };
   const assets = {
     "voice-speeding-v1": {
       assetKey: "voice-speeding-v1", channelType: "VOICE", version: "v1",
-      contentHash: "voice-hash", audioPath: "assets/alarm-audio/speeding-female-8k-mono.pcm",
+      contentHash: "voice-hash", voiceBase64: "AAAAAA==",
     },
     "text-speeding-v1": {
       assetKey: "text-speeding-v1", channelType: "TEXT", version: "v1",
@@ -87,30 +102,35 @@ test("当前单条超速预报警保留PREWARNING来源并生成受控语音后�
   };
   const plan = createResponsePlan(event, decision, settings, assets);
   assert.equal(plan.status, "PLANNED");
-  assert.equal(plan.testPromotion, true);
-  assert.equal(plan.attempts[0].audioAssetPath, "assets/alarm-audio/speeding-female-8k-mono.pcm");
+  assert.equal(plan.automaticPromotion, true);
+  assert.equal(plan.attempts[0].assetHash, "voice-hash");
   assert.equal(event.sourceKind, "PREWARNING");
 });
 
-test("未锁定到当前事件或授权过期时超速预报警真实计划保持阻断", () => {
+test("预报警只有明确发布且显式包含PREWARNING来源的规则才能自动执行", () => {
+  const event = {
+    eventId: "alarm:id:2079948988450365449", alarmId: "2079948988450365449",
+    sourceKind: "PREWARNING", alarmName: "超速驾驶", vehicleId: "vehicle-9", vehicleNo: "模拟09", certColor: "2",
+  };
+  const published = publishedSpeedingRuleSet();
+  assert.equal(evaluateRules(event, published).action, "RESPONSE_PLAN");
+  assert.equal(evaluateRules(event, { ...published, status: "APPROVED" }).action, "RECORD_ONLY");
+  const implicitSource = { ...published, rules: [{ ...published.rules[0], match: { alarmNames: ["超速驾驶"] } }] };
+  assert.equal(evaluateRules(event, implicitSource).action, "RECORD_ONLY");
+});
+
+test("真实自动动作策略关闭时超速预报警计划保持阻断", () => {
   const event = {
     eventId: "alarm:id:2079948988450365441", alarmId: "2079948988450365441",
     sourceKind: "PREWARNING", alarmName: "超速驾驶", vehicleId: "vehicle-test-002", vehicleNo: "模拟车A02", certColor: "2",
   };
-  const decision = createSpeedingPrewarningTestDecision(event);
-  const plan = createResponsePlan(event, decision, {
-    mode: "LIVE",
-    prewarningTest: {
-      targetEventId: "alarm:id:another",
-      approvedAt: "2026-07-23T00:10:00+08:00",
-      expiresAt: new Date(Date.now() - 1).toISOString(),
-    },
-  }, {
+  const decision = evaluateRules(event, publishedSpeedingRuleSet());
+  const plan = createResponsePlan(event, decision, { automaticRealActions: false }, {
     "voice-speeding-v1": { assetKey: "voice-speeding-v1", channelType: "VOICE", version: "v1", contentHash: "v" },
     "text-speeding-v1": { assetKey: "text-speeding-v1", channelType: "TEXT", version: "v1", contentHash: "t", textTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。" },
   });
   assert.equal(plan.status, "BLOCKED");
-  assert.match(plan.blockers.join("；"), /真实文本和语音适配器尚未完成授权联调/);
+  assert.match(plan.blockers.join("；"), /真实自动动作策略未启用/);
 });
 
 const RETRY_POLICY = { maxRetries: 2, delaysMs: [5000, 10000], retryOn: ["FAILED"], maxDurationMs: 30000 };
@@ -156,7 +176,7 @@ test("提醒策略支持语音必做、文本失败兜底和平台状态完成�
   const decision = evaluateRules(event, ruleSet);
   assert.equal(decision.reminderPolicy.driverReminder, "VOICE_REQUIRED");
   assert.equal(decision.channelStrategy, "FALLBACK");
-  const plan = createResponsePlan(event, decision, { mode: "SANDBOX" }, assets);
+  const plan = createResponsePlan(event, decision, { automaticRealActions: true }, assets);
   assert.equal(plan.attempts.length, 2);
   assert.equal(plan.attempts[0].channelType, "VOICE");
   assert.equal(plan.attempts[1].type, "TEXT_TTS");
@@ -194,7 +214,7 @@ test("Schema V2支持规则选择文本加终端TTS响应计划", async () => {
   const decision = evaluateRules(event, ruleSet);
   assert.equal(decision.action, "RESPONSE_PLAN");
   assert.deepEqual(decision.channels.map((channel) => channel.type), ["TEXT"]);
-  const plan = createResponsePlan(event, decision, { mode: "DRY_RUN" }, assets);
+  const plan = createResponsePlan(event, decision, { automaticRealActions: true }, assets);
   assert.equal(plan.status, "PLANNED");
   assert.equal(plan.attempts[0].renderedText, "湘A测001 发生 疲劳驾驶，请安全停车");
   assert.equal(plan.attempts[0].type, "TEXT_TTS");
@@ -418,7 +438,7 @@ test("正式报警、技术检测和待处理正式报警可进入规则，预�
   assert.equal(evaluateRules(makeEvent("alarm-details", 1), confirmedRuleSet).action, "RECORD_ONLY");
 });
 
-test("真实对讲必须同时通过规则、音频、白名单和接口验证", () => {
+test("真实对讲必须同时通过规则、音频和接口验证", () => {
   const event = normalizeAlarmRow({ id: "9000000000000000001", alarmTypeId: "62", carId: "test-car-001" }, capture);
   const decision = {
     decisionId: "decision-1",
@@ -428,16 +448,13 @@ test("真实对讲必须同时通过规则、音频、白名单和接口验证",
     audioAssetId: "audio-1"
   };
   const asset = { confirmed: true, sha256: "abc" };
-  const blocked = createActionAttempt(event, decision, { mode: "LIVE", vehicleAllowlist: [], intercom: { verified: false } }, asset);
+  const blocked = createActionAttempt(event, decision, { intercom: { verified: false } }, asset);
   assert.equal(blocked.status, "BLOCKED");
-  assert.equal(blocked.blockers.length, 2);
-  const planned = createActionAttempt(event, decision, { mode: "LIVE", vehicleAllowlist: ["test-car-001"], intercom: { verified: true } }, asset);
+  assert.equal(blocked.blockers.length, 1);
+  const planned = createActionAttempt(event, decision, { intercom: { verified: true } }, asset);
   assert.equal(planned.status, "PLANNED");
-  const sandbox = createActionAttempt(event, { ...decision, allowRealIntercom: false }, { mode: "SANDBOX", vehicleAllowlist: [], intercom: { verified: false } }, asset);
-  assert.equal(sandbox.status, "PLANNED");
-  assert.equal(sandbox.mode, "SANDBOX");
   const incompleteEvent = normalizeAlarmRow({ id: "9000000000000000011", alarmTypeId: "62" }, capture);
-  const incomplete = createActionAttempt(incompleteEvent, { ...decision, allowRealIntercom: false }, { mode: "SANDBOX", vehicleAllowlist: [], intercom: { verified: false } }, asset);
+  const incomplete = createActionAttempt(incompleteEvent, decision, { intercom: { verified: true } }, asset);
   assert.equal(incomplete.status, "BLOCKED");
   assert.match(incomplete.blockers.join("；"), /车辆标识/);
 });

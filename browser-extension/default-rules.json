@@ -3,7 +3,7 @@
   "version": "draft-2026-07-18",
   "status": "PENDING_CONFIRMATION",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "changeNote": "从现有项目文档和交互原型提取的规则草案，仅用于演练，不得驱动真实车辆。",
+  "changeNote": "断线时使用的安全待确认草案；未发布规则只记录，不得驱动真实车辆。",
   "rules": [
     {
       "id": "draft-fatigue",

@@ -17,7 +17,6 @@ test("登录失效后进入人工重登录和断点补采状态", () => {
   assert.equal(expired.recoveryRequired, true);
   assert.deepEqual(expired.recoveryPendingSources, ["realtime-alarms", "technical-alarms"]);
   assert.match(platformSessionBlocker(expired, "LIVE"), /真实动作已暂停/);
-  assert.equal(platformSessionBlocker(expired, "DRY_RUN"), null);
 });
 
 test("重新登录后必须依次补采实时报警和技术检测", () => {
@@ -39,7 +38,7 @@ test("401和403均立即标记省平台登录失效", () => {
   }
 });
 
-test("本机沙箱401不会污染真实省平台登录状态", () => {
+test("本机助手401不会污染真实省平台登录状态", () => {
   const authenticated = normalizePlatformSession(defaultPlatformSession(), { status: "AUTHENTICATED", route: "#/alarm-center/alarm-preprocessing" });
   const session = platformSessionFromCapture(authenticated, { status: 401, url: "http://127.0.0.1:18080/api/alarm", route: "#/login" });
   assert.equal(session.status, "AUTHENTICATED");
