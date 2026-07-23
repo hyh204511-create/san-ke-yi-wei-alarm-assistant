@@ -33,13 +33,35 @@ export function alarmSourcePriority(event) {
 
 export function alarmEventTime(event) {
   const value = event?.alarmTime || event?.updatedAt || event?.discoveredAt;
-  const parsed = Date.parse(String(value || ""));
+  const text = String(value || "");
+  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)
+    ? `${text.replace(" ", "T")}+08:00`
+    : text);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function compareAlarmOrder(left, right) {
   return Number(right?.priority || 0) - Number(left?.priority || 0)
     || Number(right?.time || 0) - Number(left?.time || 0);
+}
+
+export function selectLatestEligibleSpeedingPrewarning(items, nowMs = Date.now(), maxAgeMs = 10 * 60 * 1000) {
+  const candidates = (items || []).filter((item) => {
+    const event = item?.event;
+    const eventTime = alarmEventTime(event);
+    return event?.sourceKind === "PREWARNING"
+      && String(event?.alarmName || "").trim() === "超速驾驶"
+      && /^\d{10,30}$/.test(String(event?.alarmId || ""))
+      && Boolean(event?.vehicleId && event?.vehicleNo)
+      && event?.certColor !== null && event?.certColor !== undefined && event?.certColor !== ""
+      && event?.testPromotion !== true
+      && !item?.action
+      && item?.processing?.status !== "PROCESSED"
+      && eventTime > 0 && eventTime <= nowMs + 60_000 && nowMs - eventTime <= maxAgeMs;
+  });
+  candidates.sort((left, right) => alarmEventTime(right.event) - alarmEventTime(left.event)
+    || String(right.event.eventId).localeCompare(String(left.event.eventId)));
+  return candidates[0] || null;
 }
 
 const ALIASES = {

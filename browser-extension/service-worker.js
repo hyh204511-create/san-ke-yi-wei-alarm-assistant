@@ -11,6 +11,7 @@ import {
   extractAlarmCandidates,
   mergeAlarmEvents,
   normalizeAlarmRow,
+  selectLatestEligibleSpeedingPrewarning,
   toLedgerRow,
   validateRuntimeRuleSet
 } from "./alarm-domain.js";
@@ -68,6 +69,10 @@ const DEFAULT_SETTINGS = {
     approvedAt: null,
     expiresAt: null,
     consumedAt: null,
+    autoArmRequestedAt: null,
+    autoArmExpiresAt: null,
+    autoArmConsumedAt: null,
+    autoArmError: null,
   },
   popupSelectors: ["#sandbox-alarm-popup:not(.hidden)", ".alarm-detail-dialog"]
 };
@@ -1738,7 +1743,13 @@ async function armAndExecuteSpeedingPrewarningTest(eventId, senderTabId, confirm
   }
   const settings = await getSettings();
   if (settings.mode !== "LIVE") throw new Error("请先由系统管理员将插件运行模式设置为真实动作");
-  const state = await getState();
+  const realtimeTab = await livePlatformTab(senderTabId);
+  if (!realtimeTab?.id) throw new Error("插件无法自动进入已登录的省平台实时监控页");
+  let state = await getState();
+  for (let attempt = 0; attempt < 20 && state.platformSession.route !== "#/vehicle-monitor/real-time"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    state = await getState();
+  }
   if (
     state.platformSession.status !== "AUTHENTICATED"
     || state.platformSession.route !== "#/vehicle-monitor/real-time"
@@ -1751,12 +1762,13 @@ async function armAndExecuteSpeedingPrewarningTest(eventId, senderTabId, confirm
   await assistantMutation("/governance/api/devices/verify-platform-action", {
     deviceId: await getDeviceId(),
     platformDisplayName: state.platformSession.platformDisplayName,
-    route: state.platformSession.route,
+    route: "#/vehicle-monitor/real-time",
   }, identity);
   const approvedAt = new Date().toISOString();
   const nextSettings = {
     ...settings,
     prewarningTest: {
+      ...settings.prewarningTest,
       targetEventId: event.eventId,
       approvedAt,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -1786,11 +1798,66 @@ async function armAndExecuteSpeedingPrewarningTest(eventId, senderTabId, confirm
   return { ok: result.status === "SUCCEEDED", action: result, error: result.blockers?.join("；") || result.error || null };
 }
 
+async function latestEligibleSpeedingPrewarning() {
+  const state = await getState();
+  const keys = state.eventIds.flatMap((eventId) => [`event:${eventId}`, `action:${eventId}`, `processing:${eventId}`]);
+  const stored = await chrome.storage.local.get(keys);
+  return selectLatestEligibleSpeedingPrewarning(state.eventIds.map((eventId) => ({
+    event: stored[`event:${eventId}`] || null,
+    action: stored[`action:${eventId}`] || null,
+    processing: stored[`processing:${eventId}`] || null,
+  })));
+}
+
+async function maybeExecutePendingOneShotSpeedingTest(senderTabId) {
+  const settings = await getSettings();
+  const authorization = settings.prewarningTest || {};
+  if (settings.mode !== "LIVE" || !authorization.autoArmRequestedAt || authorization.autoArmConsumedAt) return { ok: false, code: "AUTO_ARM_NOT_PENDING" };
+  if (Date.parse(authorization.autoArmExpiresAt || "") <= Date.now()) {
+    const expired = { ...settings, prewarningTest: { ...authorization, autoArmConsumedAt: new Date().toISOString(), autoArmError: "AUTO_ARM_EXPIRED" } };
+    await chrome.storage.local.set({ [SETTINGS_KEY]: expired });
+    await audit("SPEEDING_PREWARNING_ONE_SHOT_EXPIRED", { requestedAt: authorization.autoArmRequestedAt });
+    return { ok: false, code: "AUTO_ARM_EXPIRED" };
+  }
+  const candidate = await latestEligibleSpeedingPrewarning();
+  if (!candidate?.event) return { ok: false, code: "NO_FRESH_SPEEDING_PREWARNING" };
+  const consumedAt = new Date().toISOString();
+  await chrome.storage.local.set({
+    [SETTINGS_KEY]: {
+      ...settings,
+      prewarningTest: {
+        ...authorization,
+        autoArmConsumedAt: consumedAt,
+        autoArmError: null,
+      },
+    },
+  });
+  await audit("SPEEDING_PREWARNING_ONE_SHOT_SELECTED", {
+    eventId: candidate.event.eventId,
+    requestedAt: authorization.autoArmRequestedAt,
+    consumedAt,
+  });
+  try {
+    return await armAndExecuteSpeedingPrewarningTest(candidate.event.eventId, senderTabId, true);
+  } catch (error) {
+    const latestSettings = await getSettings();
+    await chrome.storage.local.set({
+      [SETTINGS_KEY]: {
+        ...latestSettings,
+        prewarningTest: { ...latestSettings.prewarningTest, autoArmError: String(error?.message || error).slice(0, 300) },
+      },
+    });
+    await audit("SPEEDING_PREWARNING_ONE_SHOT_FAILED", { eventId: candidate.event.eventId, error: String(error?.message || error).slice(0, 300) });
+    throw error;
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const respond = (promise) => { void promise.then(sendResponse).catch((error) => sendResponse({ ok: false, error: String(error?.message || error) })); return true; };
   if (message.type === "CAPTURE") {
     return respond(withProcessing(() => processCaptureFast(message.record, sender.tab?.id, message.receivedAt)).then((result) => {
       void completeCaptureInBackground(message.record, result);
+      void withProcessing(() => maybeExecutePendingOneShotSpeedingTest(sender.tab?.id)).catch(() => {});
       refreshRuntimeContextInBackground();
       return { ok: true, decisionLatencyMs: result.latencyMs, uiReadyAt: new Date().toISOString() };
     }));
@@ -1841,6 +1908,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         intercom: { ...previous.intercom, ...(message.settings.intercom || {}) },
         prewarningTest: { ...previous.prewarningTest, ...(message.settings.prewarningTest || {}) },
       };
+      if (previous.mode !== "LIVE" && next.mode === "LIVE") {
+        const requestedAt = new Date().toISOString();
+        next.prewarningTest = {
+          ...next.prewarningTest,
+          targetEventId: null,
+          approvedAt: null,
+          expiresAt: null,
+          consumedAt: null,
+          autoArmRequestedAt: requestedAt,
+          autoArmExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          autoArmConsumedAt: null,
+          autoArmError: null,
+        };
+      }
       next.assistantBase = validateAssistantBase(next.assistantBase || DEFAULT_ASSISTANT_BASE);
       if (next.assistantBase !== previous.assistantBase && next.assistantBase.startsWith("https://")) {
         const origin = `${new URL(next.assistantBase).origin}/*`;
@@ -1854,6 +1935,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (next.popupSelectors.some((selector) => ["*", "html", "body"].includes(selector.toLowerCase()) || selector.length > 300)) throw new Error("弹窗选择器过宽或过长");
       await chrome.storage.local.set({ [SETTINGS_KEY]: next });
       await audit("SETTINGS_UPDATED", { actorUserId: identity.userId, actorRoles: identity.roles, mode: next.mode, allowlistCount: next.vehicleAllowlist.length, intercomVerified: next.intercom.verified });
+      if (previous.mode !== "LIVE" && next.mode === "LIVE") {
+        void withProcessing(() => maybeExecutePendingOneShotSpeedingTest(sender.tab?.id)).catch(() => {});
+      }
       return { ok: true, settings: next };
     })());
   }

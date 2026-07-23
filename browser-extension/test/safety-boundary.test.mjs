@@ -14,6 +14,9 @@ test("真实动作执行器保持在隔离内容脚本且只允许当前超速�
   assert.doesNotMatch(worker, /chrome\.scripting\.executeScript/);
   assert.doesNotMatch(worker, /new WebSocket/);
   assert.match(worker, /ARM_SPEEDING_PREWARNING_TEST/);
+  assert.match(worker, /SPEEDING_PREWARNING_ONE_SHOT_SELECTED/);
+  assert.match(worker, /autoArmExpiresAt/);
+  assert.match(content, /15分钟内自动选择最新、尚未处理的一条超速预警执行一次真实测试/);
   assert.match(worker, /PLATFORM_REALTIME_NAVIGATE/);
   assert.match(content, /值班值守监控/);
   assert.match(content, /REALTIME_MONITOR_READY/);

@@ -771,7 +771,7 @@
     const target = shadow.querySelector(".settings");
     const mode = target.querySelector(".mode").value;
     if (mode === "LIVE" && dashboard.settings.mode !== "LIVE") {
-      const confirmed = window.confirm("即将开启真实动作。只有已发布规则、有效文本/语音资产和白名单车辆才可能执行，且当前构建仍受平台适配器闸门限制。是否继续？");
+      const confirmed = window.confirm("即将开启真实动作，并授权插件在15分钟内自动选择最新、尚未处理的一条超速预警执行一次真实测试：固定语音 → 固定文本/TTS → 平台登记已处理。授权使用后立即失效，不会批量处理历史预警；失败、超时或结果未知将转人工。是否继续？");
       if (!confirmed) { target.querySelector(".mode").value = dashboard.settings.mode; return; }
     }
     const vehicleAllowlist = target.querySelector(".allowlist").value.split(/[\n,，]/).map((item) => item.trim()).filter(Boolean);

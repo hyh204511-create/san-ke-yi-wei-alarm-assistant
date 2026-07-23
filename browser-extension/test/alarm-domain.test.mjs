@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  alarmEventTime,
   alarmSourcePriority,
   compareAlarmOrder,
   createActionAttempt,
@@ -15,10 +16,41 @@ import {
   maskLedgerRow,
   normalizeAlarmRow,
   rowsToCsv,
+  selectLatestEligibleSpeedingPrewarning,
   validateAudioAsset,
   validateRuntimeRuleSet,
   validateRuleSet
 } from "../alarm-domain.js";
+
+test("平台无时区报警时间固定按 Asia/Shanghai 解析", () => {
+  assert.equal(alarmEventTime({ alarmTime: "2026-07-23 14:20:00" }), Date.parse("2026-07-23T14:20:00+08:00"));
+});
+
+test("真实模式一次性授权只选择最新且尚未处理的超速预警", () => {
+  const now = Date.parse("2026-07-23T14:20:00+08:00");
+  const event = (id, alarmTime, overrides = {}) => ({
+    eventId: `alarm:id:${id}`, alarmId: id, sourceKind: "PREWARNING", alarmName: "超速驾驶",
+    alarmTime, vehicleId: `vehicle-${id}`, vehicleNo: `模拟${id.slice(-2)}`, certColor: "2", ...overrides,
+  });
+  const rows = [
+    { event: event("2079948988450365401", "2026-07-23 14:14:00") },
+    { event: event("2079948988450365402", "2026-07-23 14:19:00") },
+    { event: event("2079948988450365403", "2026-07-23 14:19:30"), action: { status: "FAILED" } },
+    { event: event("2079948988450365404", "2026-07-23 14:19:40"), processing: { status: "PROCESSED" } },
+    { event: event("2079948988450365405", "2026-07-23 14:19:50", { alarmName: "疲劳驾驶" }) },
+  ];
+  assert.equal(selectLatestEligibleSpeedingPrewarning(rows, now)?.event.alarmId, "2079948988450365402");
+});
+
+test("真实模式一次性授权拒绝过期、未来和缺少车辆标识的预警", () => {
+  const now = Date.parse("2026-07-23T14:20:00+08:00");
+  const rows = [
+    { event: { eventId: "old", alarmId: "2079948988450365411", sourceKind: "PREWARNING", alarmName: "超速驾驶", alarmTime: "2026-07-23 14:00:00", vehicleId: "v1", vehicleNo: "模拟01", certColor: "2" } },
+    { event: { eventId: "future", alarmId: "2079948988450365412", sourceKind: "PREWARNING", alarmName: "超速驾驶", alarmTime: "2026-07-23 14:22:00", vehicleId: "v2", vehicleNo: "模拟02", certColor: "2" } },
+    { event: { eventId: "weak", alarmId: "2079948988450365413", sourceKind: "PREWARNING", alarmName: "超速驾驶", alarmTime: "2026-07-23 14:19:00", vehicleNo: "模拟03", certColor: "2" } },
+  ];
+  assert.equal(selectLatestEligibleSpeedingPrewarning(rows, now), null);
+});
 
 test("当前单条超速预报警保留PREWARNING来源并生成受控语音后文本计划", () => {
   const event = {
