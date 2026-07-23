@@ -379,9 +379,9 @@
         locationRef: dependencies.locationRef || location,
         authorization: request?.authorization,
         // Calling the native fetch as context.fetchImpl(...) changes its
-        // receiver and throws "Illegal invocation" in the browser. Keep the
-        // native function call unbound while still allowing test adapters.
-        fetchImpl: dependencies.fetchImpl || ((...args) => fetch(...args)),
+        // receiver and throws "Illegal invocation" in the browser. Bind it
+        // to the content-script global while still allowing test adapters.
+        fetchImpl: dependencies.fetchImpl || globalThis.fetch.bind(globalThis),
         WebSocketImpl: dependencies.WebSocketImpl || globalThis.WebSocket,
         AbortControllerImpl: dependencies.AbortControllerImpl || AbortController,
         setTimeoutImpl: dependencies.setTimeoutImpl || setTimeout,

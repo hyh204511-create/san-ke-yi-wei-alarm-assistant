@@ -21,12 +21,14 @@ async function loadRuntime(fetchImpl = null) {
   return context.HnPlatformActionRuntime;
 }
 
-test("默认平台fetch保持原生调用上下文", async () => {
-  const runtime = await loadRuntime(function strictFetch() {
+test("默认平台fetch绑定到内容脚本全局对象", async () => {
+  let receivedThis = null;
+  const strictFetch = function () {
     "use strict";
-    assert.equal(this, undefined);
+    receivedThis = this;
     return response({ success: true, data: {} });
-  });
+  };
+  const runtime = await loadRuntime(strictFetch);
   const event = approvedEvent();
   const result = await runtime.execute({
     operation: "TEXT",
@@ -44,6 +46,7 @@ test("默认平台fetch保持原生调用上下文", async () => {
     sleepImpl: async () => {},
   });
   assert.equal(result.status, "SUCCEEDED");
+  assert.equal(receivedThis?.fetch, strictFetch);
 });
 
 function platformDocument(event) {
