@@ -130,6 +130,26 @@ class RuleGovernanceTests(TestCase):
         })
         validate_rule_payload(payload)
 
+    def test_published_legacy_speeding_policy_fields_are_normalized(self):
+        payload = valid_payload("超速驾驶")
+        payload["rules"][0].update({
+            "match": {"sourceKinds": ["PREWARNING"], "alarmNames": ["超速驾驶"]},
+            "allowRealIntercom": True,
+            "reminderPolicy": {
+                "category": "DRIVER_IMMEDIATE",
+                "completion": {"source": "MANUAL_CONFIRMATION", "fields": [], "clearedValues": {}, "unknownAction": "MANUAL_REVIEW"},
+            },
+            "driverReminder": "VOICE_REQUIRED",
+            "secondaryChannelMode": "AFTER_PRIMARY_SUCCESS",
+            "channels": [
+                {"type": "VOICE", "order": 1, "assetId": "voice-speeding-v1", "recipientType": "DRIVER_TERMINAL", "spokenTemplate": "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。"},
+                {"type": "TEXT", "order": 2, "templateId": "text-speeding-v1", "recipientType": "DRIVER_TERMINAL", "terminalTts": True},
+            ],
+            "channelStrategy": "SEQUENTIAL",
+            "fallback": "TEXT_ON_VOICE_FAILURE",
+        })
+        validate_rule_payload(payload)
+
     def test_configure_review_publish_flow_is_separated_and_immutable(self):
         draft = create_draft(actor=self.configurer, version="rules-v2.0.0", payload=valid_payload(), change_note="加入文本优先策略", enterprise_scope_ids=self.enterprise_scope_ids)
         update_draft(actor=self.configurer, package=draft, payload=valid_payload("接打手持电话报警"), change_note="调整报警类型")

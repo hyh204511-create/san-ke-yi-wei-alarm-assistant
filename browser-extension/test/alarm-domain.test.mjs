@@ -145,6 +145,17 @@ test("浏览器运行时只放行固定资产的已发布超速预报警规则",
     },
   };
   assert.equal((await validateRuntimeRuleSet(publishedSpeedingRuleSet(), assets)).ok, true);
+  const legacyPublished = publishedSpeedingRuleSet();
+  legacyPublished.rules[0] = {
+    ...legacyPublished.rules[0],
+    driverReminder: legacyPublished.rules[0].reminderPolicy.driverReminder,
+    secondaryChannelMode: legacyPublished.rules[0].reminderPolicy.secondaryChannelMode,
+    reminderPolicy: {
+      category: legacyPublished.rules[0].reminderPolicy.category,
+      completion: legacyPublished.rules[0].reminderPolicy.completion,
+    },
+  };
+  assert.equal((await validateRuntimeRuleSet(legacyPublished, assets)).ok, true);
   const broadened = publishedSpeedingRuleSet();
   broadened.rules[0].match.sourceKinds = ["REALTIME", "PREWARNING"];
   assert.equal((await validateRuntimeRuleSet(broadened, assets)).ok, false);

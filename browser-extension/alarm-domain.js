@@ -664,8 +664,13 @@ function defaultReminderPolicy(rule = {}) {
 function reminderPolicyForRule(rule = {}) {
   const base = defaultReminderPolicy(rule);
   const configured = rule?.reminderPolicy || {};
+  const legacyConfigured = {
+    ...(rule?.driverReminder ? { driverReminder: rule.driverReminder } : {}),
+    ...(rule?.secondaryChannelMode ? { secondaryChannelMode: rule.secondaryChannelMode } : {}),
+  };
   return {
     ...base,
+    ...legacyConfigured,
     ...structuredClone(configured),
     completion: { ...base.completion, ...(configured.completion || {}) },
   };

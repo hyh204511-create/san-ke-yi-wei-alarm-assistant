@@ -58,10 +58,15 @@ def reminder_policy_for_rule(rule):
     base = default_reminder_policy(rule)
     configured = rule.get("reminderPolicy") if isinstance(rule, dict) else None
     configured = configured if isinstance(configured, dict) else {}
+    legacy_configured = {
+        key: rule[key]
+        for key in ("driverReminder", "secondaryChannelMode")
+        if isinstance(rule, dict) and rule.get(key)
+    }
     completion = dict(base["completion"])
     if isinstance(configured.get("completion"), dict):
         completion.update(configured["completion"])
-    return {**base, **configured, "completion": completion}
+    return {**base, **legacy_configured, **configured, "completion": completion}
 
 
 def validate_rule_payload(payload):
