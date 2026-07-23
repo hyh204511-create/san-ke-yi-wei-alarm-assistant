@@ -386,7 +386,7 @@ class ReportingFlowTests(TestCase):
             )
         self.assertEqual(manual.exception.code, "ACTION_MANUAL_REVIEW_REQUIRED")
 
-    def test_vehicle_alarm_scope_cooldown_blocks_distinct_alarm_ids_and_accounts(self):
+    def test_vehicle_alarm_scope_cooldown_blocks_for_60_seconds_then_allows_next_alarm(self):
         self.client.force_login(self.monitor)
         first_event = event_payload("alarm:id:9000000000000000092", alarm_name="超速驾驶")
         second_event = event_payload("alarm:id:9000000000000000093", alarm_name="超速驾驶")
@@ -421,6 +421,12 @@ class ReportingFlowTests(TestCase):
                 action_type="RESPONSE_PLAN",
             )
         self.assertEqual(cooldown.exception.code, "ACTION_SCOPE_COOLDOWN")
+        ActionLease.objects.filter(pk=lease.pk).update(created_at=timezone.now() - timedelta(seconds=61))
+        next_lease = services.acquire_action_lease(
+            actor=other, fact=second_fact, device_id="scope-device-b",
+            action_type="RESPONSE_PLAN",
+        )
+        self.assertEqual(next_lease.status, ActionLease.Status.ACTIVE)
 
     def test_action_without_stable_vehicle_id_is_blocked_for_manual_handling(self):
         self.ingest()

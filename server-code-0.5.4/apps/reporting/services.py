@@ -297,7 +297,7 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
         raise ReportingError("动作类型必须是TEXT_TTS、VOICE_INTERCOM或RESPONSE_PLAN", "INVALID_ACTION_TYPE", 422)
     now = timezone.now()
     action_scope_key = alarm_action_scope_key(fact)
-    cooldown_seconds = max(60, min(int(getattr(settings, "ACTION_SCOPE_COOLDOWN_SECONDS", 600)), 86400))
+    cooldown_seconds = max(60, min(int(getattr(settings, "ACTION_SCOPE_COOLDOWN_SECONDS", 60)), 86400))
     if not action_scope_key:
         raise ReportingError("缺少稳定车辆ID或报警类型，禁止自动下发并转人工", "ACTION_SCOPE_IDENTITY_REQUIRED", 409)
     if fact.processing_status == AlarmFact.ProcessingStatus.PROCESSED:
