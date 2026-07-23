@@ -16,6 +16,7 @@ import {
   maskLedgerRow,
   normalizeAlarmRow,
   rowsToCsv,
+  selectNextEligibleAutomaticAlarm,
   selectLatestEligibleSpeedingPrewarning,
   validateAudioAsset,
   validateRuntimeRuleSet,
@@ -34,6 +35,10 @@ function publishedSpeedingRuleSet() {
       match: { sourceKinds: ["PREWARNING"], alarmNames: ["超速驾驶"] },
       handlingMode: "AUTO",
       allowRealIntercom: true,
+      reminderPolicy: {
+        category: "DRIVER_IMMEDIATE", driverReminder: "VOICE_REQUIRED", secondaryChannelMode: "AFTER_PRIMARY_SUCCESS",
+        completion: { source: "MANUAL_CONFIRMATION", fields: [], clearedValues: {}, unknownAction: "MANUAL_REVIEW" },
+      },
       channels: [
         { type: "VOICE", order: 1, recipientType: "DRIVER", assetId: "voice-speeding-v1", spokenTemplate: "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。" },
         { type: "TEXT", order: 2, recipientType: "DRIVER", templateId: "text-speeding-v1", terminalTts: true },
@@ -75,6 +80,23 @@ test("真实自动运行拒绝过期、未来和缺少车辆标识的预警", ()
   assert.equal(selectLatestEligibleSpeedingPrewarning(rows, now), null);
 });
 
+test("自动报警队列优先正式报警，无可执行正式报警时回退已审核超速预警", () => {
+  const now = Date.parse("2026-07-23T20:20:00+08:00");
+  const item = (id, sourceKind, alarmTime, overrides = {}) => ({
+    event: {
+      eventId: `alarm:id:${id}`, alarmId: id, sourceKind, alarmName: "超速驾驶",
+      alarmTime, vehicleId: `vehicle-${id}`, vehicleNo: `模拟${id.slice(-2)}`, certColor: "2", ...overrides,
+    },
+    decision: { action: "RESPONSE_PLAN" },
+  });
+  const formal = item("2079948988450365450", "REALTIME", "2026-07-23 20:18:00");
+  const pending = item("2079948988450365451", "PENDING", "2026-07-23 20:19:00");
+  const prewarning = item("2079948988450365452", "PREWARNING", "2026-07-23 20:19:30");
+  assert.equal(selectNextEligibleAutomaticAlarm([prewarning, formal, pending], now)?.event.alarmId, pending.event.alarmId);
+  assert.equal(selectNextEligibleAutomaticAlarm([prewarning, { ...formal, action: { status: "UNKNOWN" } }], now)?.event.alarmId, prewarning.event.alarmId);
+  assert.equal(selectNextEligibleAutomaticAlarm([{ ...formal, processing: { status: "PROCESSED" } }, prewarning], now)?.event.alarmId, prewarning.event.alarmId);
+});
+
 test("自动超速预报警保留PREWARNING来源并生成语音后文本计划", () => {
   const event = {
     eventId: "alarm:id:2079948988450365440",
@@ -106,6 +128,26 @@ test("自动超速预报警保留PREWARNING来源并生成语音后文本计划"
   assert.equal(plan.automaticPromotion, true);
   assert.equal(plan.attempts[0].assetHash, "voice-hash");
   assert.equal(event.sourceKind, "PREWARNING");
+});
+
+test("浏览器运行时只放行固定资产的已发布超速预报警规则", async () => {
+  const text = "驾驶员，平台已报警，车辆超速驾驶，请降速安全行驶。";
+  const voiceBytes = Buffer.from([0, 0, 1, 0]);
+  const assets = {
+    "voice-speeding-v1": {
+      assetKey: "voice-speeding-v1", version: "v1", channelType: "VOICE",
+      contentHash: createHash("sha256").update(Buffer.concat([Buffer.from("VOICE\0"), voiceBytes])).digest("hex"),
+      voiceBase64: voiceBytes.toString("base64"),
+    },
+    "text-speeding-v1": {
+      assetKey: "text-speeding-v1", version: "v1", channelType: "TEXT",
+      contentHash: createHash("sha256").update(`TEXT\0${text}`, "utf8").digest("hex"), textTemplate: text,
+    },
+  };
+  assert.equal((await validateRuntimeRuleSet(publishedSpeedingRuleSet(), assets)).ok, true);
+  const broadened = publishedSpeedingRuleSet();
+  broadened.rules[0].match.sourceKinds = ["REALTIME", "PREWARNING"];
+  assert.equal((await validateRuntimeRuleSet(broadened, assets)).ok, false);
 });
 
 test("预报警只有明确发布且显式包含PREWARNING来源的规则才能自动执行", () => {

@@ -11,7 +11,7 @@ import {
   extractAlarmCandidates,
   mergeAlarmEvents,
   normalizeAlarmRow,
-  selectLatestEligibleSpeedingPrewarning,
+  selectNextEligibleAutomaticAlarm,
   toLedgerRow,
   validateRuntimeRuleSet
 } from "./alarm-domain.js";
@@ -557,7 +557,7 @@ async function livePlatformTab(senderTabId) {
   } catch { return null; }
 }
 
-async function executeLivePlatformAttempt(original, event, platformTabId, operation = original.channelType) {
+async function executeLivePlatformAttempt(original, event, platformTabId, operation = original.channelType, decision = null) {
   let tab = null;
   try { tab = await chrome.tabs.get(platformTabId); } catch {}
   if (!tab?.id || !isHnPlatformUrl(tab.url) || new URL(tab.url).hash.split("?")[0] !== "#/vehicle-monitor/real-time") {
@@ -589,6 +589,11 @@ async function executeLivePlatformAttempt(original, event, platformTabId, operat
         renderedText: original.renderedText,
         pcmBase64,
         authorization,
+        ruleAuthorization: decision?.action === "RESPONSE_PLAN" ? {
+          kind: "PUBLISHED_RESPONSE_PLAN",
+          ruleId: decision.ruleId,
+          ruleSetVersion: decision.ruleSetVersion,
+        } : null,
         event: {
           alarmId: event.alarmId,
           alarmTime: event.alarmTime,
@@ -1043,6 +1048,10 @@ async function processCaptureFastLocked(record, senderTabId, receivedAt = null) 
       if (action) {
         const preservedState = action.status === "SUCCEEDED" ? "SUCCEEDED" : ["FAILED", "UNKNOWN", "BLOCKED", "MANUAL_REQUIRED"].includes(action.status) ? "MANUAL_REQUIRED" : "EXECUTING";
         event = eventWithState(event, preservedState);
+      } else if (event.sourceKind === "PREWARNING") {
+        // Prewarnings are only the fallback queue. Leave them unclaimed here so
+        // the automatic sweep can first exhaust every eligible formal alarm.
+        event = eventWithState(event, "RULE_MATCHED");
       } else {
         action = createResponsePlan(event, decision, settings, responseAssets);
         updates[actionKey] = action;
@@ -1367,7 +1376,7 @@ async function executeResponseAttempt(original, event, decision, serverLease, pl
     if (guard.blockers.length) {
       delivery = { ...delivery, status: "BLOCKED", blockers: [...(delivery.blockers || []), ...guard.blockers] };
     } else if (delivery.mode === "LIVE") {
-      delivery = { ...delivery, ...(await executeLivePlatformAttempt(delivery, event, platformTabId)) };
+      delivery = { ...delivery, ...(await executeLivePlatformAttempt(delivery, event, platformTabId, delivery.channelType, decision)) };
     } else {
       delivery = { ...delivery, status: "BLOCKED", blockers: [...(delivery.blockers || []), "真实渠道执行适配器未获授权"] };
     }
@@ -1472,11 +1481,14 @@ async function executeResponsePlan(event, decision, plan, senderTabId) {
     failed = attempts.some((attempt) => !["SUCCEEDED", "SKIPPED"].includes(attempt.status));
   }
   let processingResult = null;
-  if (!failed && attempts.some((attempt) => attempt.channelType === "TEXT" && attempt.status === "SUCCEEDED")) {
+  if (!failed && attempts.some((attempt) => attempt.status === "SUCCEEDED")) {
     const processingGuard = await validateResponsePhase(event, decision, serverLease, boundTab.id);
+    const processedText = attempts.find((attempt) => attempt.channelType === "TEXT" && attempt.status === "SUCCEEDED")?.renderedText
+      || attempts.find((attempt) => attempt.status === "SUCCEEDED")?.renderedText
+      || "";
     processingResult = processingGuard.blockers.length
       ? { status: "BLOCKED", blockers: processingGuard.blockers, error: processingGuard.blockers.join("；") }
-      : await executeLivePlatformAttempt({ ...plan, actionId: `${plan.actionId}:processed`, channelType: "PROCESSING" }, event, boundTab.id, "MARK_PROCESSED");
+      : await executeLivePlatformAttempt({ ...plan, actionId: `${plan.actionId}:processed`, channelType: "PROCESSING", renderedText: processedText }, event, boundTab.id, "MARK_PROCESSED", decision);
     if (processingResult.status !== "SUCCEEDED") failed = true;
   }
   currentPlan = {
@@ -1774,7 +1786,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   });
 });
 
-async function executeAutomaticSpeedingPrewarning(eventId, senderTabId) {
+async function executeAutomaticAlarm(eventId, senderTabId) {
   const identity = await requireAssistantPermission("action.execute", { requireShift: true });
   const key = String(eventId || "");
   const stored = await chrome.storage.local.get([`event:${key}`, `decision:${key}`, `action:${key}`]);
@@ -1802,9 +1814,7 @@ async function executeAutomaticSpeedingPrewarning(eventId, senderTabId) {
   }
   const published = await getCurrentPublishedRuntime(identity, { force: true });
   const decision = evaluateRules(event, published.ruleSet);
-  if (decision.action !== "RESPONSE_PLAN") {
-    throw new Error("当前超速预报警未命中后台已发布的真实自动规则");
-  }
+  if (decision.action !== "RESPONSE_PLAN") throw new Error("当前报警未命中后台已发布的真实自动规则");
   await sendDeviceHeartbeat();
   await assistantMutation("/governance/api/devices/verify-platform-action", {
     deviceId: await getDeviceId(),
@@ -1814,7 +1824,9 @@ async function executeAutomaticSpeedingPrewarning(eventId, senderTabId) {
   let action = createResponsePlan(event, decision, settings, published.responseAssets);
   if (action.status !== "PLANNED") throw new Error(action.blockers.join("；") || "真实自动处置计划未通过安全检查");
   action = { ...action, initiatedBy: "AUTOMATIC_RULE", initiatedByUserId: identity.userId };
-  event = eventWithState({ ...event, automaticPromotion: true, effectiveActionKind: "AUTOMATIC_FORMAL" }, "PLANNED");
+  event = eventWithState(decision.automaticPromotion === true
+    ? { ...event, automaticPromotion: true, effectiveActionKind: "AUTOMATIC_FORMAL" }
+    : event, "PLANNED");
   await chrome.storage.local.set({
     [`event:${event.eventId}`]: event,
     [`decision:${event.eventId}`]: decision,
@@ -1824,47 +1836,51 @@ async function executeAutomaticSpeedingPrewarning(eventId, senderTabId) {
   await persist("decision", decision);
   await persist("action", action);
   await syncAlarmFact(event, decision, action, identity);
-  await audit("SPEEDING_PREWARNING_AUTOMATIC_RESPONSE_STARTED", {
+  await audit("AUTOMATIC_ALARM_RESPONSE_STARTED", {
     eventId: event.eventId,
+    sourceKind: event.sourceKind,
     actorUserId: identity.userId,
   });
   const result = await executeResponsePlan(event, decision, action, realtimeTab.id);
   return { ok: result.status === "SUCCEEDED", action: result, error: result.blockers?.join("；") || result.error || null };
 }
 
-async function latestEligibleSpeedingPrewarning(excludedEventIds = new Set()) {
+async function nextEligibleAutomaticAlarm(ruleSet, excludedEventIds = new Set()) {
   const state = await getState();
   const keys = state.eventIds.flatMap((eventId) => [`event:${eventId}`, `action:${eventId}`, `processing:${eventId}`]);
   const stored = await chrome.storage.local.get(keys);
-  return selectLatestEligibleSpeedingPrewarning(state.eventIds.filter((eventId) => !excludedEventIds.has(eventId)).map((eventId) => ({
+  return selectNextEligibleAutomaticAlarm(state.eventIds.filter((eventId) => !excludedEventIds.has(eventId)).map((eventId) => ({
     event: stored[`event:${eventId}`] || null,
+    decision: stored[`event:${eventId}`] ? evaluateRules(stored[`event:${eventId}`], ruleSet) : null,
     action: stored[`action:${eventId}`] || null,
     processing: stored[`processing:${eventId}`] || null,
   })));
 }
 
-async function executeAutomaticSpeedingResponses(senderTabId) {
+async function executeAutomaticAlarmResponses(senderTabId) {
   const settings = await getSettings();
   if (settings.automaticRealActions !== true) return { ok: false, code: "AUTOMATIC_REAL_ACTIONS_DISABLED" };
+  const identity = await requireAssistantPermission("action.execute", { requireShift: true });
+  const published = await getCurrentPublishedRuntime(identity);
   const excluded = new Set();
   const results = [];
   for (let index = 0; index < 20; index += 1) {
-    const candidate = await latestEligibleSpeedingPrewarning(excluded);
+    const candidate = await nextEligibleAutomaticAlarm(published.ruleSet, excluded);
     if (!candidate?.event) break;
     excluded.add(candidate.event.eventId);
     try {
-      results.push(await executeAutomaticSpeedingPrewarning(candidate.event.eventId, senderTabId));
+      results.push(await executeAutomaticAlarm(candidate.event.eventId, senderTabId));
     } catch (error) {
       results.push({ ok: false, eventId: candidate.event.eventId, error: String(error?.message || error).slice(0, 300) });
-      await audit("SPEEDING_PREWARNING_AUTOMATIC_RESPONSE_FAILED", { eventId: candidate.event.eventId, error: String(error?.message || error).slice(0, 300) });
+      await audit("AUTOMATIC_ALARM_RESPONSE_FAILED", { eventId: candidate.event.eventId, sourceKind: candidate.event.sourceKind, error: String(error?.message || error).slice(0, 300) });
     }
   }
   return { ok: true, processed: results.length, results };
 }
 
-function scheduleAutomaticSpeedingResponses(senderTabId) {
+function scheduleAutomaticAlarmResponses(senderTabId) {
   if (automaticResponsePromise) return automaticResponsePromise;
-  automaticResponsePromise = executeAutomaticSpeedingResponses(senderTabId)
+  automaticResponsePromise = executeAutomaticAlarmResponses(senderTabId)
     .catch(async (error) => {
       await audit("AUTOMATIC_RESPONSE_SWEEP_FAILED", {
         error: String(error?.message || error).slice(0, 300),
@@ -1880,7 +1896,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "CAPTURE") {
     return respond(withProcessing(() => processCaptureFast(message.record, sender.tab?.id, message.receivedAt)).then((result) => {
       void completeCaptureInBackground(message.record, result);
-      void scheduleAutomaticSpeedingResponses(sender.tab?.id);
+      void scheduleAutomaticAlarmResponses(sender.tab?.id);
       refreshRuntimeContextInBackground();
       return { ok: true, decisionLatencyMs: result.latencyMs, uiReadyAt: new Date().toISOString() };
     }));

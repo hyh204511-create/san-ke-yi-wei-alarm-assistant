@@ -64,6 +64,33 @@ export function selectLatestEligibleSpeedingPrewarning(items, nowMs = Date.now()
   return candidates[0] || null;
 }
 
+export function selectNextEligibleAutomaticAlarm(items, nowMs = Date.now(), maxAgeMs = 10 * 60 * 1000) {
+  const candidates = (items || []).filter((item) => {
+    const event = item?.event;
+    const eventTime = alarmEventTime(event);
+    const formal = ["REALTIME", "PENDING"].includes(event?.sourceKind);
+    const approvedPrewarning = event?.sourceKind === "PREWARNING"
+      && String(event?.alarmName || "").trim() === "超速驾驶";
+    return (formal || approvedPrewarning)
+      && item?.decision?.action === "RESPONSE_PLAN"
+      && /^\d{10,30}$/.test(String(event?.alarmId || ""))
+      && Boolean(event?.vehicleId && event?.vehicleNo)
+      && event?.certColor !== null && event?.certColor !== undefined && event?.certColor !== ""
+      && event?.automaticPromotion !== true
+      && !item?.action
+      && [null, undefined, "", "UNPROCESSED"].includes(item?.processing?.status)
+      && eventTime > 0 && eventTime <= nowMs + 60_000 && nowMs - eventTime <= maxAgeMs;
+  });
+  candidates.sort((left, right) => {
+    const leftFallback = left.event.sourceKind === "PREWARNING" ? 1 : 0;
+    const rightFallback = right.event.sourceKind === "PREWARNING" ? 1 : 0;
+    return leftFallback - rightFallback
+      || alarmEventTime(right.event) - alarmEventTime(left.event)
+      || String(right.event.eventId).localeCompare(String(left.event.eventId));
+  });
+  return candidates[0] || null;
+}
+
 const ALIASES = {
   alarmId: ["alarmRecordId", "alarmInfoId", "recordId", "eventId", "id"],
   alarmTypeId: ["alarmTypeId", "alarmKind", "alarmCode", "alarmTypeCode"],
@@ -444,8 +471,10 @@ export async function validateRuntimeRuleSet(ruleSet, responseAssets = {}) {
     if (rule.handlingMode === "AUTO" && reminderPolicy.driverReminder === "VOICE_REQUIRED" && channels[0]?.type !== "VOICE") errors.push(`${prefix}VOICE_REQUIRED主渠道必须为VOICE`);
     if (rule.handlingMode === "AUTO" && reminderPolicy.driverReminder === "VOICE_PREFERRED" && channels[0]?.type !== "VOICE") errors.push(`${prefix}VOICE_PREFERRED主渠道必须为VOICE`);
     if (rule.handlingMode === "AUTO" && reminderPolicy.driverReminder === "TEXT_ONLY" && channels[0]?.type !== "TEXT") errors.push(`${prefix}TEXT_ONLY主渠道必须为TEXT`);
-    if (rule.handlingMode === "AUTO" && (rule.match?.sourceKinds || []).some((kind) => ["PREWARNING", "HISTORY", "DETAIL"].includes(kind))) {
-      errors.push(`${prefix}预报警、历史和详情来源不能触发自动响应`);
+    const sourceKinds = rule.match?.sourceKinds || [];
+    const prewarningAuto = rule.handlingMode === "AUTO" && sourceKinds.includes("PREWARNING");
+    if (rule.handlingMode === "AUTO" && sourceKinds.some((kind) => ["HISTORY", "DETAIL"].includes(kind))) {
+      errors.push(`${prefix}历史和详情来源不能触发自动响应`);
     }
     const strategy = rule.channelStrategy || (channels.length <= 1 ? "SINGLE" : null);
     if (!["SINGLE", "SEQUENTIAL", "FALLBACK", "PARALLEL"].includes(strategy)) errors.push(`${prefix}.channelStrategy无效`);
@@ -458,6 +487,19 @@ export async function validateRuntimeRuleSet(ruleSet, responseAssets = {}) {
     if (rule.handlingMode === "AUTO" && reminderPolicy.secondaryChannelMode === "MANUAL_ONLY" && channels.length !== 1) errors.push(`${prefix}人工补充模式不得自动配置第二渠道`);
     if (rule.handlingMode === "AUTO" && reminderPolicy.secondaryChannelMode === "ON_PRIMARY_FAILURE" && channels[0]?.type !== "VOICE") errors.push(`${prefix}当前失败兜底策略的主渠道必须为VOICE`);
     if (rule.handlingMode === "AUTO" && reminderPolicy.secondaryChannelMode === "ON_PRIMARY_FAILURE" && channels[1]?.type !== "TEXT") errors.push(`${prefix}当前失败兜底策略的第二渠道必须为TEXT_TTS`);
+    if (prewarningAuto) {
+      const alarmNames = rule.match?.alarmNames || [];
+      const fixedChannels = channels.map((channel) => channel?.type).join(",") === "VOICE,TEXT";
+      const fixedAssets = channels[0]?.assetId === "voice-speeding-v1" && channels[1]?.templateId === "text-speeding-v1";
+      if (JSON.stringify(sourceKinds) !== JSON.stringify(["PREWARNING"]) || JSON.stringify(alarmNames) !== JSON.stringify(["超速驾驶"])) {
+        errors.push(`${prefix}当前仅允许显式PREWARNING来源的超速驾驶自动规则`);
+      }
+      if (!fixedChannels || !fixedAssets || strategy !== "SEQUENTIAL" || rule.fallback !== "TEXT_ON_VOICE_FAILURE") {
+        errors.push(`${prefix}超速预报警必须固定为已审核语音后文本顺序流程`);
+      }
+    } else if (rule.fallback === "TEXT_ON_VOICE_FAILURE") {
+      errors.push(`${prefix}.fallback仅允许已审核超速预报警规则使用`);
+    }
     const orders = new Set();
     for (const [channelIndex, channel] of channels.entries()) {
       const channelPrefix = `${prefix}.channels[${channelIndex}]`;

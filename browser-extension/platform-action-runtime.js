@@ -20,8 +20,9 @@
     return Boolean(
       event
       && /^\d{10,30}$/.test(String(event.alarmId || ""))
-      && String(event.sourceKind || "") === "PREWARNING"
-      && cleanText(event.alarmName) === "超速驾驶"
+      && ["REALTIME", "PENDING", "PREWARNING"].includes(String(event.sourceKind || ""))
+      && cleanText(event.alarmName)
+      && (String(event.sourceKind || "") !== "PREWARNING" || cleanText(event.alarmName) === "超速驾驶")
       && String(event.vehicleId || "").length > 0
       && String(event.vehicleId || "").length <= 160
       && normalizedPlate(event.vehicleNo)
@@ -30,15 +31,38 @@
     );
   }
 
-  function speedingRow(documentRef, event) {
-    const rows = [...documentRef.querySelectorAll("tr.ve-table-body-tr[row-key]")];
-    const row = rows.find((item) => item.getAttribute("row-key") === String(event.alarmId));
-    if (!row) return null;
-    const cells = [...row.querySelectorAll("td")].map((item) => cleanText(item.textContent));
-    if (normalizedPlate(cells[1]) !== normalizedPlate(event.vehicleNo)) return null;
-    if (cells[2] !== "超速驾驶") return null;
-    if (event.alarmTime && cells[3] && cells[3] !== cleanText(event.alarmTime)) return null;
-    return row;
+  function alarmRow(documentRef, event) {
+    const rows = [...documentRef.querySelectorAll("table tbody tr,tr.ve-table-body-tr")]
+      .filter((row, index, all) => all.indexOf(row) === index);
+    const matches = rows.filter((row) => {
+      const rowKey = row.getAttribute?.("row-key") || row.getAttribute?.("data-row-key");
+      if (rowKey && rowKey !== String(event.alarmId)) return false;
+      const cells = [...row.querySelectorAll("td")].map((item) => cleanText(item.textContent));
+      if (!cells.some((value) => normalizedPlate(value) === normalizedPlate(event.vehicleNo))) return false;
+      if (!cells.includes(cleanText(event.alarmName))) return false;
+      return !event.alarmTime || cells.includes(cleanText(event.alarmTime));
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function targetTabLabel(event) {
+    return event.sourceKind === "PREWARNING" ? "预警列表" : "实时报警";
+  }
+
+  async function selectAlarmTab(documentRef, event, sleepImpl) {
+    const expected = targetTabLabel(event);
+    const candidates = [...documentRef.querySelectorAll(".tabs .tab-item")]
+      .filter((node) => cleanText(node.textContent).startsWith(expected));
+    if (candidates.length !== 1) return { status: "BLOCKED", errorCode: "ALARM_TAB_NOT_FOUND" };
+    const tab = candidates[0];
+    if (!tab.classList?.contains("active")) tab.click();
+    const selected = await waitFor(
+      () => tab.classList?.contains("active") === true,
+      { timeoutMs: 3000, sleepImpl }
+    );
+    return selected
+      ? { status: "SUCCEEDED" }
+      : { status: "BLOCKED", errorCode: "ALARM_TAB_MISMATCH" };
   }
 
   function hasActionButtons(root) {
@@ -71,7 +95,11 @@
   }
 
   async function prepareVehicle(documentRef, event, sleepImpl) {
-    const row = speedingRow(documentRef, event);
+    const selectedTab = await selectAlarmTab(documentRef, event, sleepImpl);
+    if (selectedTab.status !== "SUCCEEDED") return selectedTab;
+    const rowReady = await waitFor(() => Boolean(alarmRow(documentRef, event)), { timeoutMs: 5000, sleepImpl });
+    if (!rowReady) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
+    const row = alarmRow(documentRef, event);
     if (!row) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
     if (!monitorShowsVehicle(documentRef, event.vehicleNo)) row.click();
     const selected = await waitFor(
@@ -259,11 +287,13 @@
   }
 
   async function executeText(request, context) {
-    if (cleanText(request.renderedText) !== SPEEDING_TEXT) {
+    const renderedText = cleanText(request.renderedText);
+    if (!renderedText || renderedText.length > 500
+      || (request.event.sourceKind === "PREWARNING" && renderedText !== SPEEDING_TEXT)) {
       return { status: "BLOCKED", errorCode: "TEXT_ASSET_MISMATCH" };
     }
     const sent = await postJson(ENDPOINTS.textSend, {
-      msgContent: SPEEDING_TEXT,
+      msgContent: renderedText,
       carInfoList: [{
         carId: request.event.vehicleId,
         certColor: request.event.certColor,
@@ -287,11 +317,16 @@
   }
 
   async function executeMarkProcessed(request, context) {
+    const renderedText = cleanText(request.renderedText);
+    if (!renderedText || renderedText.length > 500
+      || (request.event.sourceKind === "PREWARNING" && renderedText !== SPEEDING_TEXT)) {
+      return { status: "BLOCKED", errorCode: "PROCESSING_TEXT_MISMATCH" };
+    }
     const processed = await postJson(ENDPOINTS.markProcessed, {
       id: request.event.alarmId,
       alarmTime: request.event.alarmTime,
       positiveMethod: 1,
-      appealContent: SPEEDING_TEXT,
+      appealContent: renderedText,
     }, context);
     if (processed.status !== "SUCCEEDED") {
       return { ...processed, status: "UNKNOWN", errorCode: "PROCESSING_MARK_UNKNOWN", terminalTts: true };
@@ -319,7 +354,12 @@
     if (!/^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(context.locationRef.hash || "")) {
       return { status: "BLOCKED", errorCode: "PLATFORM_ROUTE_MISMATCH" };
     }
-    if (!validEvent(request?.event)) return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
+    if (!validEvent(request?.event)
+      || request?.ruleAuthorization?.kind !== "PUBLISHED_RESPONSE_PLAN"
+      || !cleanText(request.ruleAuthorization.ruleId)
+      || !cleanText(request.ruleAuthorization.ruleSetVersion)) {
+      return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
+    }
     const prepared = await prepareVehicle(context.documentRef, request.event, context.sleepImpl);
     if (prepared.status !== "SUCCEEDED") return prepared;
     if (request.operation === "VOICE") return executeVoice(request, context);
@@ -333,6 +373,8 @@
     SPEEDING_TEXT,
     execute,
     normalizedPlate,
+    alarmRow,
+    targetTabLabel,
     validEvent,
   });
 })();

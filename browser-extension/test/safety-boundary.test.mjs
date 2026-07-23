@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("真实动作执行器保持在隔离内容脚本且只允许已发布超速预警固定接口", async () => {
+test("真实动作执行器保持在隔离内容脚本并只接受后台已发布响应计划", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
@@ -13,7 +13,9 @@ test("真实动作执行器保持在隔离内容脚本且只允许已发布超�
   assert.doesNotMatch(worker, /chrome\.scripting\.executeScript/);
   assert.doesNotMatch(worker, /new WebSocket/);
   assert.match(worker, /automaticRealActions/);
-  assert.match(worker, /scheduleAutomaticSpeedingResponses/);
+  assert.match(worker, /scheduleAutomaticAlarmResponses/);
+  assert.match(worker, /event\.sourceKind === "PREWARNING"/);
+  assert.match(worker, /first exhaust every eligible formal alarm/);
   assert.match(worker, /getCurrentPublishedRuntime/);
   assert.match(worker, /validateResponsePhase/);
   assert.match(worker, /platformSession\.tabId !== platformTabId/);
@@ -28,7 +30,7 @@ test("真实动作执行器保持在隔离内容脚本且只允许已发布超�
   for (const receiptField of ["processingStatus", "voiceStatus", "textStatus", "fallbackUsed", "bytesSent", "durationMs"]) {
     assert.match(worker, new RegExp(`"${receiptField}"`));
   }
-  assert.match(runtime, /sourceKind\s*\|\|\s*""\)\s*===\s*"PREWARNING"/);
+  assert.match(runtime, /\["REALTIME", "PENDING", "PREWARNING"\]/);
   assert.match(runtime, /alarmName\)\s*===\s*"超速驾驶"/);
   for (const endpoint of [
     "sendRealAudioTransmissionMessage",
