@@ -18,6 +18,7 @@
   let lastPlatformContext = null;
   let lastRealtimePollAt = null;
   let lastRealtimePollStatus = null;
+  let lastRealtimeDomSignature = null;
   let extensionContextInvalidated = false;
   const observedPopups = new WeakSet();
 
@@ -158,6 +159,45 @@
       const hostname = new URL(record.url).hostname;
       return hostname.endsWith(".hnznjg.cn") || hostname === "127.0.0.1" || hostname === "localhost";
     } catch { return false; }
+  }
+
+  async function backfillVisibleRealtimeAlarms() {
+    if (!/^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(location.hash || "")) return;
+    const panel = document.querySelector(".base-panel.real-time-footer");
+    const activeTab = panel?.querySelector(".tab-item.active");
+    if (!/^实时报警(?:\s*\d+)?$/.test(String(activeTab?.textContent || "").replace(/\s+/g, " ").trim())) return;
+    const tables = [...panel.querySelectorAll("table")];
+    const table = tables.find((candidate) => {
+      const headers = [...candidate.querySelectorAll("thead th")].map((node) => String(node.textContent || "").replace(/\s+/g, " ").trim());
+      const rect = candidate.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0
+        && HnRealtimeDom.REQUIRED_HEADERS.every((header) => headers.includes(header));
+    });
+    if (!table) return;
+    const headers = [...table.querySelectorAll("thead th")].map((node) => node.textContent || "");
+    const tableRows = [...table.querySelectorAll("tbody tr")].slice(0, 500).map((row) =>
+      [...row.querySelectorAll("td")].map((cell) => cell.textContent || ""));
+    const extracted = HnRealtimeDom.extractRows(headers, tableRows);
+    if (!extracted.ok || extracted.signature === lastRealtimeDomSignature) return;
+    if (!extracted.rows.length) return;
+    const capturedAt = new Date().toISOString();
+    const response = await runtimeSendMessage({
+      type: "CAPTURE",
+      receivedAt: capturedAt,
+      record: {
+        captureId: `dom-realtime:${extracted.signature}`,
+        capturedAt,
+        matchedRule: "realtime-alarms",
+        category: "alarm",
+        isAlarm: true,
+        method: "DOM",
+        status: 200,
+        route: location.hash.split("?")[0],
+        url: `${location.origin}${location.pathname}${location.hash.split("?")[0]}`,
+        response: { body: { data: extracted.rows } },
+      },
+    });
+    if (response?.ok) lastRealtimeDomSignature = extracted.signature;
   }
 
   const REPORT_NAVIGATION = Object.freeze({
@@ -760,6 +800,7 @@
   async function refresh() {
     try {
       reportPlatformSession();
+      await backfillVisibleRealtimeAlarms();
       dashboard = await runtimeSendMessage({ type: "STATUS" });
       if (!dashboard?.ok) throw new Error(dashboard.error || "扩展后台未响应");
       configurePopupObserver(dashboard.settings.popupSelectors || []);

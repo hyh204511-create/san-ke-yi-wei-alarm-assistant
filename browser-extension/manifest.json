@@ -46,6 +46,7 @@
         "debug-records.js",
         "authorized-keepalive.js",
         "platform-action-runtime.js",
+        "realtime-dom.js",
         "content.js"
       ],
       "run_at": "document_start"
