@@ -15,6 +15,8 @@ powershell -ExecutionPolicy Bypass -File deploy/windows/start-assistant-postgres
 
 本机实际运行和正式环境统一使用 PostgreSQL。Windows 本机启动脚本为 `deploy/windows/start-assistant-postgresql.ps1`，它从当前 Windows 用户环境读取数据库连接和密钥、执行迁移，再使用 Waitress 监听 `127.0.0.1:18080`。SQLite 仅保留为迁移前备份和自动化测试兼容入口，不再承载插件实时写入。
 
+需要与 Windows 登录绑定时，以当前用户运行 `deploy/windows/register-assistant-startup.ps1`。计划任务会启动 PostgreSQL 助手，通过 `/ready` 后打开 `/assistant/`；已有浏览器会话直接进入当前身份，会话过期则停在登录页。账号密码不会写入脚本或计划任务。
+
 历史加密数据迁移时可以临时配置 `SENSITIVE_DATA_KEY_FALLBACKS`（逗号分隔的32字节 URL-safe base64 密钥）。回退密钥只用于读取旧密文；所有新写入始终使用 `SENSITIVE_DATA_KEY`。完成统一重加密和验收后应移除回退密钥。
 
 正式环境必须设置 `ASSISTANT_DEBUG=0`、独立的 `ASSISTANT_SECRET_KEY`、PostgreSQL `DATABASE_URL`、允许域名、CSRF 来源以及独立的数据加密密钥；正式环境使用 Gunicorn 或 Waitress，不使用 `manage.py runserver`。

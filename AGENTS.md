@@ -48,6 +48,8 @@ cd server-code-0.5.4
 powershell -ExecutionPolicy Bypass -File deploy/windows/start-assistant-postgresql.ps1
 ```
 
+Windows 登录自启动统一由 `deploy/windows/register-assistant-startup.ps1` 注册。它只能绑定服务启动和打开实名助手页面，不得保存账号密码或绕过登录。
+
 浏览器真实联调必须使用用户已授权的会话，并在交付中说明账号权限、页面版本、已验证入口和未验证边界。
 
 ### 已打开浏览器连接规则

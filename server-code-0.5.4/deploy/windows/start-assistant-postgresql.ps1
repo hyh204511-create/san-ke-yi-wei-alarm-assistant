@@ -1,4 +1,9 @@
+param(
+    [switch]$OpenLogin
+)
+
 $ErrorActionPreference = "Stop"
+$assistantUrl = "http://127.0.0.1:18080/assistant/"
 
 $requiredEnvironment = @(
     "DATABASE_URL",
@@ -43,6 +48,9 @@ if ($existingListener) {
         $response = Invoke-RestMethod -Uri "http://127.0.0.1:18080/ready" -TimeoutSec 5
         if ($response.ok -eq $true -and $response.database.engine -eq "postgresql" -and
             $response.database.writable -eq $true -and $response.database.migrations_applied -eq $true) {
+            if ($OpenLogin) {
+                Start-Process $assistantUrl
+            }
             return
         }
     } catch {
@@ -56,6 +64,24 @@ Set-Location $projectRoot
 & $python manage.py migrate --noinput
 if ($LASTEXITCODE -ne 0) {
     throw "Database migration failed"
+}
+
+if ($OpenLogin) {
+    Start-Job -ScriptBlock {
+        param($url)
+        $deadline = (Get-Date).AddSeconds(30)
+        do {
+            try {
+                $ready = Invoke-RestMethod -Uri "http://127.0.0.1:18080/ready" -TimeoutSec 2
+                if ($ready.ok -eq $true -and $ready.database.engine -eq "postgresql") {
+                    Start-Process $url
+                    return
+                }
+            } catch {
+            }
+            Start-Sleep -Milliseconds 500
+        } while ((Get-Date) -lt $deadline)
+    } -ArgumentList $assistantUrl | Out-Null
 }
 
 & $python -m waitress --listen=127.0.0.1:18080 config.wsgi:application
