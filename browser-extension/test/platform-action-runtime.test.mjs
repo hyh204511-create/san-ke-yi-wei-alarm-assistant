@@ -260,3 +260,34 @@ test("正式报警自动选择实时报警页签并按发布规则下发文本",
   assert.equal(runtime.targetTabLabel(event), "实时报警");
   assert.equal(calls[0].body.msgContent, "驾驶员，平台检测到疲劳驾驶报警，请立即安全停车休息。");
 });
+
+test("当前监控页以精确报警行高亮确认车辆选择", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const documentRef = platformDocument(event);
+  let selected = false;
+  documentRef.row.classList = { contains: (name) => name === "ve-table-tr-highlight" && selected };
+  documentRef.row.click = () => { selected = true; };
+  const originalQuery = documentRef.querySelectorAll.bind(documentRef);
+  documentRef.querySelectorAll = (selector) => selector === "p,span,div" ? [] : originalQuery(selector);
+  const calls = [];
+  const result = await runtime.execute({
+    operation: "TEXT",
+    actionId: "action:current-row-text",
+    renderedText: runtime.SPEEDING_TEXT,
+    authorization: "Bearer test-token",
+    event,
+    ruleAuthorization: ruleAuthorization(),
+  }, {
+    documentRef,
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    fetchImpl: async (url, options) => { calls.push({ url, body: JSON.parse(options.body) }); return response({ success: true, data: {} }); },
+    AbortControllerImpl: AbortController,
+    setTimeoutImpl: setTimeout,
+    clearTimeoutImpl: clearTimeout,
+    sleepImpl: async () => {},
+  });
+  assert.equal(result.status, "SUCCEEDED");
+  assert.equal(selected, true);
+  assert.equal(calls.length, 1);
+});

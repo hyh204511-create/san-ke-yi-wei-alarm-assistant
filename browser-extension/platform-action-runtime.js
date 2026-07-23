@@ -85,6 +85,10 @@
     return false;
   }
 
+  function alarmRowIsSelected(documentRef, event) {
+    return alarmRow(documentRef, event)?.classList?.contains("ve-table-tr-highlight") === true;
+  }
+
   async function waitFor(predicate, { timeoutMs = 5000, intervalMs = 100, sleepImpl } = {}) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
@@ -101,9 +105,9 @@
     if (!rowReady) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
     const row = alarmRow(documentRef, event);
     if (!row) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
-    if (!monitorShowsVehicle(documentRef, event.vehicleNo)) row.click();
+    if (!monitorShowsVehicle(documentRef, event.vehicleNo) && !alarmRowIsSelected(documentRef, event)) row.click();
     const selected = await waitFor(
-      () => monitorShowsVehicle(documentRef, event.vehicleNo),
+      () => monitorShowsVehicle(documentRef, event.vehicleNo) || alarmRowIsSelected(documentRef, event),
       { sleepImpl }
     );
     return selected
@@ -374,6 +378,7 @@
     execute,
     normalizedPlate,
     alarmRow,
+    alarmRowIsSelected,
     targetTabLabel,
     validEvent,
   });
