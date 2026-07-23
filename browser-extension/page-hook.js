@@ -9,10 +9,22 @@
   const REALTIME_MONITOR_ROUTE = /^#\/vehicle-monitor\/real-time(?:$|[/?])/i;
   const REALTIME_POLL_PATH = "/alarm-service/alarm/center/getVideoUnprocessedAlarm";
   const ALARM_QUERY_PATH = "/alarm-service/alarm/center/alarmQueryList";
-  let realtimePoll = null;
-  let realtimePollInFlight = false;
-  let realtimePollFailures = 0;
-  let lastRealtimeResponseText = null;
+  const ALARM_POLL_SILENCE_MS = 4500;
+  const ALARM_POLL_TIMEOUT_MS = 15000;
+  const MAX_ALARM_POLLERS = 8;
+  const ALARM_API_ORIGIN = "https://zuul-2k1v.hnznjg.cn:7443";
+  const alarmPollers = new Map();
+  const nativeRequestSequences = new Map();
+  let nativeRequestSequence = 0;
+  let authenticationFailureSequence = 0;
+  let authenticatedSuccessSequence = 0;
+  const ALARM_POLL_TARGETS = Object.freeze([
+    Object.freeze({ name: "prewarning-query", path: REALTIME_POLL_PATH, method: "POST" }),
+    Object.freeze({ name: "prewarning-query", path: ALARM_QUERY_PATH, method: "POST" }),
+    Object.freeze({ name: "realtime-alarms", path: ALARM_QUERY_PATH, method: "POST" }),
+    Object.freeze({ name: "pending-alarms", path: "/alarm-service/alarm/center/alarmPreProcessingInfo", method: "POST" }),
+    Object.freeze({ name: "technical-alarms", path: "/alarm-service/alarm/center/technology/detection", method: "POST" })
+  ]);
   const RULES = [
     ["alarm-types", "/alarm-service/alarmUserSet/listAll", "alarm"],
     ["preprocessing-count", "/alarm-service/alarm/center/alarmPreProcessingCount", "alarm"],
@@ -168,6 +180,34 @@
     return { body: value, truncated };
   }
 
+  function sanitizeUrl(value) {
+    try {
+      const url = new URL(String(value), location.href);
+      for (const key of [...url.searchParams.keys()]) {
+        if (SENSITIVE_KEY.test(key) || /^(?:code|captcha|sign|signature)$/i.test(key)) {
+          url.searchParams.set(key, "[REDACTED]");
+        }
+      }
+      url.hash = sanitizeRoute(url.hash);
+      return url.href;
+    } catch {
+      return String(value || "").split("?")[0];
+    }
+  }
+
+  function sanitizeRoute(value) {
+    const route = String(value || "");
+    const separator = route.indexOf("?");
+    if (separator < 0) return route;
+    const params = new URLSearchParams(route.slice(separator + 1));
+    for (const key of [...params.keys()]) {
+      if (SENSITIVE_KEY.test(key) || /^(?:code|captcha|sign|signature)$/i.test(key)) {
+        params.set(key, "[REDACTED]");
+      }
+    }
+    return `${route.slice(0, separator)}?${params}`;
+  }
+
   function emit(record) {
     window.postMessage({
       source: "hn-alarm-collector-page",
@@ -175,10 +215,12 @@
         schemaVersion: 1,
         captureId: crypto.randomUUID(),
         capturedAt: new Date().toISOString(),
-        pageUrl: location.href,
-        route: location.hash,
+        pageUrl: sanitizeUrl(location.href),
+        route: sanitizeRoute(location.hash),
         isAlarm: record.category === "alarm",
-        ...record
+        ...record,
+        url: record.url ? sanitizeUrl(record.url) : record.url,
+        route: sanitizeRoute(record.route ?? location.hash)
       }
     }, location.origin);
   }
@@ -247,39 +289,149 @@
     } catch {}
   }
 
-  function isRealtimePollTarget(rule, route = location.hash || "") {
-    return Boolean(rule?.path?.includes(REALTIME_POLL_PATH) && REALTIME_MONITOR_ROUTE.test(route));
+  function isAlarmPollTarget(rule, method, url) {
+    if (rule?.category !== "alarm") return false;
+    let origin;
+    try { origin = new URL(String(url), location.href).origin; } catch { return false; }
+    if (origin !== ALARM_API_ORIGIN) return false;
+    return ALARM_POLL_TARGETS.some((target) => target.name === rule.name
+      && target.path === rule.path
+      && target.method === String(method || "").toUpperCase());
   }
 
-  function registerRealtimePoll(rule, execute, route = location.hash || "") {
-    if (!isRealtimePollTarget(rule, route) || typeof execute !== "function") return;
-    realtimePoll = execute;
-    realtimePollFailures = 0;
+  function requestFingerprint(method, url, body) {
+    const source = `${method}\n${url}\n${typeof body === "string" ? body : String(body ?? "")}`;
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
   }
 
-  function reportRealtimePoll(status, changed) {
+  function pollerKey(rule, method, url, body) {
+    return `${rule.name}:${rule.path}:${requestFingerprint(method, url, body)}`;
+  }
+
+  function registerAlarmPoll({ key, rule, route, execute, responseText }) {
+    if (typeof execute !== "function") return;
+    const existing = alarmPollers.get(key);
+    if (!existing && alarmPollers.size >= MAX_ALARM_POLLERS) {
+      const sourceCounts = new Map();
+      for (const candidate of alarmPollers.values()) {
+        sourceCounts.set(candidate.rule.name, (sourceCounts.get(candidate.rule.name) || 0) + 1);
+      }
+      const oldest = [...alarmPollers.entries()]
+        .filter(([, candidate]) => (sourceCounts.get(candidate.rule.name) || 0) > 1)
+        .sort((left, right) => left[1].lastNativeAt - right[1].lastNativeAt)[0];
+      if (!oldest) return;
+      if (oldest) alarmPollers.delete(oldest[0]);
+    }
+    const poller = existing || {
+      key,
+      inFlight: false,
+      generation: 0
+    };
+    poller.rule = { ...rule };
+    poller.route = route;
+    poller.execute = execute;
+    poller.lastNativeAt = Date.now();
+    poller.lastResponseSignature = responseSignature(responseText);
+    poller.failures = 0;
+    poller.generation += 1;
+    alarmPollers.set(key, poller);
+  }
+
+  function responseSignature(text) {
+    return `${String(text || "").length}:${requestFingerprint("", "", text)}`;
+  }
+
+  function beginNativeRequest(rule, method, url) {
+    let origin;
+    try { origin = new URL(String(url), location.href).origin; } catch { return null; }
+    const approvedPath = ALARM_POLL_TARGETS.some((target) => target.path === rule?.path
+      && target.method === String(method || "").toUpperCase());
+    if (!approvedPath || origin !== ALARM_API_ORIGIN) return null;
+    const sequenceKey = `${String(method || "").toUpperCase()}:${rule.path}`;
+    const sequence = ++nativeRequestSequence;
+    nativeRequestSequences.set(sequenceKey, sequence);
+    const observedAt = Date.now();
+    for (const poller of alarmPollers.values()) {
+      if (poller.rule.path === rule.path) poller.lastNativeAt = observedAt;
+    }
+    return { sequenceKey, sequence };
+  }
+
+  function isLatestNativeRequest(nativeRequest) {
+    return nativeRequest && nativeRequestSequences.get(nativeRequest.sequenceKey) === nativeRequest.sequence;
+  }
+
+  function acceptNativeSuccess(nativeRequest) {
+    if (!isLatestNativeRequest(nativeRequest) || nativeRequest.sequence <= authenticationFailureSequence) return false;
+    authenticatedSuccessSequence = Math.max(authenticatedSuccessSequence, nativeRequest.sequence);
+    return true;
+  }
+
+  function acceptNativeAuthenticationFailure(nativeRequest) {
+    if (!nativeRequest || nativeRequest.sequence < authenticatedSuccessSequence) return false;
+    authenticationFailureSequence = Math.max(authenticationFailureSequence, nativeRequest.sequence);
+    return true;
+  }
+
+  function acceptFallbackAuthenticationFailure() {
+    authenticationFailureSequence = ++nativeRequestSequence;
+    alarmPollers.clear();
+  }
+
+  function reportRealtimePoll(status, changed, poller) {
     window.postMessage({
       source: "hn-alarm-realtime-poll",
       status,
       changed: Boolean(changed),
+      matchedRule: poller?.rule?.name || null,
+      path: poller?.rule?.path || null,
       polledAt: new Date().toISOString()
     }, location.origin);
   }
 
-  async function runRealtimePoll() {
-    if (!REALTIME_MONITOR_ROUTE.test(location.hash || "") || !realtimePoll || realtimePollInFlight) return;
-    realtimePollInFlight = true;
+  async function runAlarmPoller(poller) {
+    if (poller.inFlight || Date.now() - poller.lastNativeAt < ALARM_POLL_SILENCE_MS) return;
+    poller.inFlight = true;
+    const generation = poller.generation;
     try {
-      const status = await realtimePoll();
-      if (status === 401 || status === 403) realtimePoll = null;
-      realtimePollFailures = status >= 200 && status < 400 ? 0 : realtimePollFailures + 1;
-      if (realtimePollFailures >= 3) realtimePoll = null;
+      const result = await poller.execute();
+      if (alarmPollers.get(poller.key) !== poller || poller.generation !== generation) return;
+      const status = Number(result?.status || 0);
+      const nextSignature = responseSignature(result?.responseText);
+      const changed = nextSignature !== poller.lastResponseSignature;
+      reportRealtimePoll(status, changed, poller);
+      if (status === 401 || status === 403) {
+        acceptFallbackAuthenticationFailure();
+        return;
+      }
+      if (status >= 200 && status < 400) {
+        poller.failures = 0;
+        if (changed) {
+          poller.lastResponseSignature = nextSignature;
+          result.emitRecord?.(poller);
+        }
+      } else {
+        poller.failures += 1;
+      }
     } catch {
-      realtimePollFailures += 1;
-      if (realtimePollFailures >= 3) realtimePoll = null;
+      if (alarmPollers.get(poller.key) === poller && poller.generation === generation) poller.failures += 1;
     } finally {
-      realtimePollInFlight = false;
+      poller.inFlight = false;
+      if (poller.generation === generation && poller.failures >= 3) alarmPollers.delete(poller.key);
     }
+  }
+
+  async function runAlarmPollers() {
+    await Promise.all([...alarmPollers.values()].map(runAlarmPoller));
+  }
+
+  function isReplayableFetchBody(body) {
+    return body == null || typeof body === "string";
   }
 
   const originalFetch = window.fetch;
@@ -294,21 +446,37 @@
     const rule = matchRule(url, { route: requestRoute, activeTab: requestActiveTab });
     const method = String(init.method || input.method || "GET").toUpperCase();
     const requestHeaders = safeHeaders(init.headers || input.headers);
+    let replayRequestSeed = null;
+    if (input instanceof Request) {
+      try { replayRequestSeed = input.clone(); } catch {}
+    }
     const requestBodyPromise = init.body != null
       ? Promise.resolve(parseBody(init.body))
-      : input instanceof Request
-        ? input.clone().text().then(parseBody).catch(() => null)
+      : replayRequestSeed
+        ? replayRequestSeed.clone().text().then(parseBody).catch(() => null)
         : Promise.resolve(null);
+    const requestFingerprintBodyPromise = init.body != null
+      ? Promise.resolve(typeof init.body === "string" ? init.body : "")
+      : replayRequestSeed
+        ? replayRequestSeed.clone().text().catch(() => "")
+        : Promise.resolve("");
 
+    const absoluteUrl = new URL(url, location.href).href;
+    const nativeRequest = beginNativeRequest(rule, method, absoluteUrl);
     const responsePromise = originalFetch.apply(this, args);
     if (!rule) return responsePromise;
 
     responsePromise.then((response) => {
       void Promise.all([
         requestBodyPromise,
+        requestFingerprintBodyPromise,
         response.clone().text().catch(() => "")
-      ]).then(([requestBody, responseText]) => {
+      ]).then(([requestBody, requestFingerprintBody, responseText]) => {
         const responseRule = resolveResponseRule(rule, requestRoute, requestActiveTab);
+        const authenticationFailure = (response.status === 401 || response.status === 403)
+          && acceptNativeAuthenticationFailure(nativeRequest);
+        const acceptedNativeSuccess = response.ok && acceptNativeSuccess(nativeRequest);
+        if (authenticationFailure) alarmPollers.clear();
         const contentType = response.headers.get("content-type") || "";
         emit({
           transport: "fetch",
@@ -330,31 +498,48 @@
             ...parseResponse(responseText, contentType)
           }
         });
-        if (response.ok && isRealtimePollTarget(responseRule, requestRoute)) {
-          lastRealtimeResponseText = responseText;
-          const replayInput = input instanceof Request ? input.clone() : input;
+        if (acceptedNativeSuccess && isAlarmPollTarget(responseRule, method, absoluteUrl)
+          && isReplayableFetchBody(init.body)
+          && (!(input instanceof Request) || replayRequestSeed)) {
           const replayInit = { ...init };
-          registerRealtimePoll(responseRule, async () => {
+          delete replayInit.signal;
+          if (init.headers) replayInit.headers = new Headers(init.headers);
+          const key = pollerKey(responseRule, method, absoluteUrl, requestFingerprintBody);
+          registerAlarmPoll({ key, rule: responseRule, route: requestRoute, responseText, execute: async () => {
             const pollStartedAt = Date.now();
             const pollStartedMark = performance.now();
-            const nextInput = replayInput instanceof Request ? replayInput.clone() : replayInput;
-            const pollResponse = await originalFetch.call(window, nextInput, replayInit);
+            const controller = new AbortController();
+            const nextInput = replayRequestSeed
+              ? new Request(replayRequestSeed.clone(), { signal: controller.signal })
+              : absoluteUrl;
+            replayInit.signal = controller.signal;
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                controller.abort();
+                reject(new Error("alarm poll timeout"));
+              }, ALARM_POLL_TIMEOUT_MS);
+            });
+            const pollResponse = await Promise.race([
+              originalFetch.call(window, nextInput, replayInit),
+              timeoutPromise
+            ]).finally(() => clearTimeout(timeoutId));
             const pollText = await pollResponse.clone().text().catch(() => "");
             const pollContentType = pollResponse.headers.get("content-type") || "";
-            const changed = pollText !== lastRealtimeResponseText;
-            reportRealtimePoll(pollResponse.status, changed);
-            if (changed) {
-              lastRealtimeResponseText = pollText;
-              emit({
-                transport: "fetch-poll", method, url: new URL(url, location.href).href, route: requestRoute,
-                path: responseRule.path, matchedRule: responseRule.name, category: responseRule.category, startedAt: new Date(pollStartedAt).toISOString(),
-                durationMs: Math.round(performance.now() - pollStartedMark), status: pollResponse.status, ok: pollResponse.ok,
-                request: { headers: requestHeaders, body: requestBody },
-                response: { headers: safeHeaders(pollResponse.headers), contentType: pollContentType, ...parseResponse(pollText, pollContentType) }
-              });
-            }
-            return pollResponse.status;
-          }, requestRoute);
+            return {
+              status: pollResponse.status,
+              responseText: pollText,
+              emitRecord: (poller) => {
+                emit({
+                  transport: "fetch-poll", method, url: absoluteUrl, route: poller.route,
+                  path: poller.rule.path, matchedRule: poller.rule.name, category: poller.rule.category, startedAt: new Date(pollStartedAt).toISOString(),
+                  durationMs: Math.round(performance.now() - pollStartedMark), status: pollResponse.status, ok: pollResponse.ok,
+                  request: { headers: requestHeaders, body: requestBody },
+                  response: { headers: safeHeaders(pollResponse.headers), contentType: pollContentType, ...parseResponse(pollText, pollContentType) }
+                });
+              }
+            };
+          }});
         }
       });
     }).catch((error) => {
@@ -383,7 +568,7 @@
   const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    const realtimePollReplay = this.__hnRealtimePollReplay === true;
+    const alarmPollReplay = this.__hnAlarmPollReplay === true;
     const requestRoute = location.hash || "";
     const requestActiveTab = isAlarmQueryUrl(url) ? activeMonitorAlarmTab(requestRoute) : null;
     this.__hnCollector = {
@@ -394,7 +579,8 @@
       rule: matchRule(url, { route: requestRoute, activeTab: requestActiveTab }),
       headers: {},
       replayHeaders: {},
-      realtimePollReplay
+      openRest: [...rest],
+      alarmPollReplay
     };
     return originalOpen.call(this, method, url, ...rest);
   };
@@ -409,11 +595,22 @@
 
   XMLHttpRequest.prototype.send = function (body) {
     const meta = this.__hnCollector;
-    if (meta?.rule) {
+    if (meta?.rule && !meta.alarmPollReplay) {
+      const nativeRequest = beginNativeRequest(meta.rule, meta.method, meta.url);
       const startedAt = Date.now();
       const startedMark = performance.now();
+      const replayOptions = {
+        withCredentials: this.withCredentials,
+        timeout: this.timeout,
+        responseType: this.responseType
+      };
       this.addEventListener("loadend", () => {
         const responseRule = resolveResponseRule(meta.rule, meta.route, meta.activeTab);
+        const authenticationFailure = (this.status === 401 || this.status === 403)
+          && acceptNativeAuthenticationFailure(nativeRequest);
+        const acceptedNativeSuccess = this.status >= 200 && this.status < 400
+          && acceptNativeSuccess(nativeRequest);
+        if (authenticationFailure) alarmPollers.clear();
         let responseText = "";
         try {
           if (!this.responseType || this.responseType === "text") responseText = this.responseText || "";
@@ -423,39 +620,71 @@
           responseText = "[response unavailable]";
         }
         const contentType = this.getResponseHeader("content-type") || "";
-        const realtimeTarget = isRealtimePollTarget(responseRule, meta.route);
-        const changed = !realtimeTarget || responseText !== lastRealtimeResponseText;
-        if (meta.realtimePollReplay) reportRealtimePoll(this.status, changed);
-        if (!meta.realtimePollReplay || changed) {
-          if (realtimeTarget) lastRealtimeResponseText = responseText;
-          emit({
-            transport: meta.realtimePollReplay ? "xhr-poll" : "xhr",
-            method: meta.method,
-            url: meta.url,
-            route: meta.route,
-            path: responseRule.path,
-            matchedRule: responseRule.name,
-            category: responseRule.category,
-            reportSourceType: responseRule.sourceType || null,
-            startedAt: new Date(startedAt).toISOString(),
-            durationMs: Math.round(performance.now() - startedMark),
-            status: this.status,
-            ok: this.status >= 200 && this.status < 400,
-            request: { headers: meta.headers, body: parseBody(body) },
-            response: { headers: {}, contentType, ...parseResponse(responseText, contentType) }
-          });
-        }
-        if (this.status >= 200 && this.status < 400 && isRealtimePollTarget(responseRule, meta.route)) {
-          const replayBody = body;
+        emit({
+          transport: "xhr",
+          method: meta.method,
+          url: meta.url,
+          route: meta.route,
+          path: responseRule.path,
+          matchedRule: responseRule.name,
+          category: responseRule.category,
+          reportSourceType: responseRule.sourceType || null,
+          startedAt: new Date(startedAt).toISOString(),
+          durationMs: Math.round(performance.now() - startedMark),
+          status: this.status,
+          ok: this.status >= 200 && this.status < 400,
+          request: { headers: meta.headers, body: parseBody(body) },
+          response: { headers: {}, contentType, ...parseResponse(responseText, contentType) }
+        });
+        if (acceptedNativeSuccess
+          && isAlarmPollTarget(responseRule, meta.method, meta.url) && isReplayableFetchBody(body)) {
+          const replayBody = body == null ? null : String(body);
           const replayHeaders = { ...meta.replayHeaders };
-          registerRealtimePoll(responseRule, () => new Promise((resolve) => {
+          const key = pollerKey(responseRule, meta.method, meta.url, replayBody);
+          registerAlarmPoll({ key, rule: responseRule, route: meta.route, responseText, execute: () => new Promise((resolve) => {
+            const pollStartedAt = Date.now();
+            const pollStartedMark = performance.now();
             const poll = new XMLHttpRequest();
-            poll.__hnRealtimePollReplay = true;
-            poll.open(meta.method, meta.url, true);
+            poll.__hnAlarmPollReplay = true;
+            poll.open(meta.method, meta.url, ...meta.openRest);
+            poll.withCredentials = replayOptions.withCredentials;
+            poll.timeout = replayOptions.timeout > 0
+              ? Math.min(replayOptions.timeout, ALARM_POLL_TIMEOUT_MS)
+              : ALARM_POLL_TIMEOUT_MS;
+            poll.responseType = replayOptions.responseType;
             for (const [name, value] of Object.entries(replayHeaders)) poll.setRequestHeader(name, value);
-            poll.addEventListener("loadend", () => resolve(poll.status), { once: true });
+            poll.addEventListener("loadend", () => {
+              let pollText = "";
+              try {
+                if (!poll.responseType || poll.responseType === "text") pollText = poll.responseText || "";
+                else if (poll.responseType === "json") pollText = JSON.stringify(poll.response);
+                else pollText = `[${poll.responseType} response omitted]`;
+              } catch {
+                pollText = "[response unavailable]";
+              }
+              const pollContentType = poll.getResponseHeader("content-type") || "";
+              resolve({
+                status: poll.status,
+                responseText: pollText,
+                emitRecord: (poller) => emit({
+                  transport: "xhr-poll",
+                  method: meta.method,
+                  url: meta.url,
+                  route: poller.route,
+                  path: poller.rule.path,
+                  matchedRule: poller.rule.name,
+                  category: poller.rule.category,
+                  startedAt: new Date(pollStartedAt).toISOString(),
+                  durationMs: Math.round(performance.now() - pollStartedMark),
+                  status: poll.status,
+                  ok: poll.status >= 200 && poll.status < 400,
+                  request: { headers: meta.headers, body: parseBody(replayBody) },
+                  response: { headers: {}, contentType: pollContentType, ...parseResponse(pollText, pollContentType) }
+                })
+              });
+            }, { once: true });
             poll.send(replayBody);
-          }), meta.route);
+          }) });
         }
       }, { once: true });
     }
@@ -463,5 +692,7 @@
   };
 
   installSharedWorkerObserver();
-  setInterval(runRealtimePoll, REALTIME_POLL_INTERVAL_MS);
+  setInterval(() => {
+    void runAlarmPollers();
+  }, REALTIME_POLL_INTERVAL_MS);
 })();
