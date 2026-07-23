@@ -384,9 +384,9 @@
         fetchImpl: dependencies.fetchImpl || globalThis.fetch.bind(globalThis),
         WebSocketImpl: dependencies.WebSocketImpl || globalThis.WebSocket,
         AbortControllerImpl: dependencies.AbortControllerImpl || AbortController,
-        setTimeoutImpl: dependencies.setTimeoutImpl || setTimeout,
-        clearTimeoutImpl: dependencies.clearTimeoutImpl || clearTimeout,
-        sleepImpl: dependencies.sleepImpl || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+        setTimeoutImpl: dependencies.setTimeoutImpl || globalThis.setTimeout.bind(globalThis),
+        clearTimeoutImpl: dependencies.clearTimeoutImpl || globalThis.clearTimeout.bind(globalThis),
+        sleepImpl: dependencies.sleepImpl || ((milliseconds) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds))),
         rowReadyTimeoutMs: Number.isFinite(Number(dependencies.rowReadyTimeoutMs))
           ? Math.max(10, Math.min(Number(dependencies.rowReadyTimeoutMs), 30000))
           : 15000,

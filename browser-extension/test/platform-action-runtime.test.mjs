@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 
-async function loadRuntime(fetchImpl = null) {
+async function loadRuntime(fetchImpl = null, timerImpls = {}) {
   const source = await readFile(new URL("../platform-action-runtime.js", import.meta.url), "utf8");
   const context = {
     AbortController,
@@ -13,8 +13,8 @@ async function loadRuntime(fetchImpl = null) {
     Uint8Array,
     fetch: fetchImpl,
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
-    clearTimeout,
-    setTimeout,
+    clearTimeout: timerImpls.clearTimeout || clearTimeout,
+    setTimeout: timerImpls.setTimeout || setTimeout,
   };
   context.globalThis = context;
   vm.runInNewContext(source, context);
@@ -47,6 +47,43 @@ test("默认平台fetch绑定到内容脚本全局对象", async () => {
   });
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(receivedThis?.fetch, strictFetch);
+});
+
+test("默认平台计时器绑定到内容脚本全局对象", async () => {
+  let setTimeoutThis = null;
+  let clearTimeoutThis = null;
+  const strictSetTimeout = function () {
+    "use strict";
+    setTimeoutThis = this;
+    if (this?.setTimeout !== strictSetTimeout) throw new TypeError("Illegal invocation");
+    return 1;
+  };
+  const strictClearTimeout = function () {
+    "use strict";
+    clearTimeoutThis = this;
+    if (this?.clearTimeout !== strictClearTimeout) throw new TypeError("Illegal invocation");
+  };
+  const runtime = await loadRuntime(
+    async () => response({ success: true, data: {} }),
+    { setTimeout: strictSetTimeout, clearTimeout: strictClearTimeout },
+  );
+  const event = approvedEvent();
+  const result = await runtime.execute({
+    operation: "TEXT",
+    actionId: "action:native-timer-context",
+    renderedText: runtime.SPEEDING_TEXT,
+    authorization: "Bearer test-token",
+    event,
+    ruleAuthorization: ruleAuthorization(),
+  }, {
+    documentRef: platformDocument(event),
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    AbortControllerImpl: AbortController,
+    sleepImpl: async () => {},
+  });
+  assert.equal(result.status, "SUCCEEDED");
+  assert.equal(setTimeoutThis?.setTimeout, strictSetTimeout);
+  assert.equal(clearTimeoutThis?.clearTimeout, strictClearTimeout);
 });
 
 function platformDocument(event) {
