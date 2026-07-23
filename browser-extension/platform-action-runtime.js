@@ -117,11 +117,17 @@
     return false;
   }
 
-  async function prepareVehicle(documentRef, event, sleepImpl, rowReadyTimeoutMs = 15000) {
+  async function checkAlarmRow(documentRef, event, sleepImpl, rowReadyTimeoutMs = 15000) {
     const selectedTab = await selectAlarmTab(documentRef, event, sleepImpl);
     if (selectedTab.status !== "SUCCEEDED") return selectedTab;
     const rowReady = await waitFor(() => Boolean(alarmRow(documentRef, event)), { timeoutMs: rowReadyTimeoutMs, sleepImpl });
     if (!rowReady) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
+    return { status: "SUCCEEDED" };
+  }
+
+  async function prepareVehicle(documentRef, event, sleepImpl, rowReadyTimeoutMs = 15000) {
+    const checked = await checkAlarmRow(documentRef, event, sleepImpl, rowReadyTimeoutMs);
+    if (checked.status !== "SUCCEEDED") return checked;
     const row = alarmRow(documentRef, event);
     if (!row) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
     if (!monitorShowsVehicle(documentRef, event.vehicleNo) && !alarmRowIsSelected(documentRef, event)) row.click();
@@ -407,6 +413,7 @@
     ENDPOINTS,
     SPEEDING_TEXT,
     execute,
+    checkAlarmRow,
     safeRuntimeException,
     normalizedPlate,
     alarmRow,

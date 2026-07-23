@@ -23,6 +23,11 @@ test("真实动作执行器保持在隔离内容脚本并只接受后台已发�
   assert.doesNotMatch(worker, /DRY_RUN|SANDBOX|ARM_SPEEDING_PREWARNING_TEST|SPEEDING_PREWARNING_ONE_SHOT_SELECTED|autoArmExpiresAt/);
   assert.doesNotMatch(content, /DRY_RUN|SANDBOX|arm-speeding-test|retry-action|一次真实测试/);
   assert.match(worker, /PLATFORM_REALTIME_NAVIGATE/);
+  assert.match(worker, /PLATFORM_ALARM_ROW_CHECK/);
+  assert.match(content, /PLATFORM_ALARM_ROW_CHECK/);
+  const automaticExecution = worker.match(/async function executeAutomaticAlarm\([\s\S]*?\n}\n\nasync function nextEligibleAutomaticAlarm/)?.[0] || "";
+  assert.ok(automaticExecution.indexOf("PLATFORM_ALARM_ROW_CHECK") >= 0);
+  assert.ok(automaticExecution.indexOf("PLATFORM_ALARM_ROW_CHECK") < automaticExecution.indexOf("createResponsePlan"));
   assert.match(content, /值班值守监控/);
   assert.match(content, /REALTIME_MONITOR_READY/);
   assert.match(worker, /automaticPromotion/);

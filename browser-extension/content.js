@@ -402,6 +402,17 @@
         .catch(() => sendResponse({ status: "UNKNOWN", errorCode: "ACTION_RUNTIME_EXCEPTION" }));
       return true;
     }
+    if (message?.type === "PLATFORM_ALARM_ROW_CHECK") {
+      Promise.resolve(globalThis.HnPlatformActionRuntime?.checkAlarmRow(
+        document,
+        message.event,
+        (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+        3000
+      ))
+        .then((result) => sendResponse(result || { status: "BLOCKED", errorCode: "ACTION_RUNTIME_UNAVAILABLE" }))
+        .catch(() => sendResponse({ status: "UNKNOWN", errorCode: "ALARM_ROW_CHECK_EXCEPTION" }));
+      return true;
+    }
     if (message?.type === "PLATFORM_REPORT_NAVIGATE") {
       navigateReportSource(message.sourceType)
         .then((result) => {

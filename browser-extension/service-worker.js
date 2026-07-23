@@ -1815,6 +1815,13 @@ async function executeAutomaticAlarm(eventId, senderTabId) {
   const published = await getCurrentPublishedRuntime(identity, { force: true });
   const decision = evaluateRules(event, published.ruleSet);
   if (decision.action !== "RESPONSE_PLAN") throw new Error("当前报警未命中后台已发布的真实自动规则");
+  const rowCheck = await chrome.tabs.sendMessage(realtimeTab.id, {
+    type: "PLATFORM_ALARM_ROW_CHECK",
+    event,
+  });
+  if (rowCheck?.status !== "SUCCEEDED") {
+    throw new Error(`当前报警不在实时监控可见列表：${String(rowCheck?.errorCode || "ALARM_ROW_CHECK_FAILED").slice(0, 80)}`);
+  }
   await sendDeviceHeartbeat();
   await assistantMutation("/governance/api/devices/verify-platform-action", {
     deviceId: await getDeviceId(),

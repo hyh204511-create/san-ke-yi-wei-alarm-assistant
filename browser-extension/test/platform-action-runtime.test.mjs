@@ -358,3 +358,12 @@ test("接口先于表格渲染时等待精确报警行出现", async () => {
   assert.equal(result.status, "SUCCEEDED");
   assert.ok(rowQueries >= 5);
 });
+
+test("租约前报警行预检只切换页签并读取精确行", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const documentRef = platformDocument(event);
+  const result = await runtime.checkAlarmRow(documentRef, event, async () => {}, 10);
+  assert.equal(result.status, "SUCCEEDED");
+  assert.equal(documentRef.row.clicked, 0);
+});
