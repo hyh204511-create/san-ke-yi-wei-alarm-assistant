@@ -609,8 +609,15 @@ async function executeLivePlatformAttempt(original, event, platformTabId, operat
       ? response.status
       : "UNKNOWN";
     const safe = {};
-    for (const key of ["receiptRef", "errorCode", "platformHttpStatus", "terminalTts", "playbackStarted", "bytesSent", "durationMs", "processingStatus"]) {
-      if (response?.[key] !== undefined) safe[key] = response[key];
+    for (const key of ["receiptRef", "errorCode", "errorName", "errorMessage", "platformHttpStatus", "terminalTts", "playbackStarted", "bytesSent", "durationMs", "processingStatus"]) {
+      if (response?.[key] === undefined) continue;
+      if (key === "errorName") {
+        const value = String(response[key] || "");
+        if (/^[A-Za-z][A-Za-z0-9]{0,40}Error$/.test(value)) safe[key] = value;
+      } else if (key === "errorMessage") {
+        const value = String(response[key] || "");
+        if (/^[\x20-\x7e]{0,160}$/.test(value)) safe[key] = value;
+      } else safe[key] = response[key];
     }
     return {
       status,
