@@ -12,6 +12,25 @@
     return String(value ?? "").replace(/\s+/g, " ").trim();
   }
 
+  function safeRuntimeException(error) {
+    const rawName = String(error?.name || "Error");
+    const errorName = /^[A-Za-z][A-Za-z0-9]{0,40}Error$/.test(rawName) ? rawName : "Error";
+    const errorMessage = String(error?.message || error || "runtime exception")
+      .replace(/\b(?:bearer\s+\S+|(?:token|cookie|authorization|password)\s*[:=]\s*\S+)/gi, "[secret]")
+      .replace(/https?:\/\/\S+/gi, "[url]")
+      .replace(/[A-Za-z0-9_-]{24,}/g, "[value]")
+      .replace(/[^\x20-\x7e]/g, "?")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+    return {
+      status: "UNKNOWN",
+      errorCode: "ACTION_RUNTIME_EXCEPTION",
+      errorName,
+      errorMessage,
+    };
+  }
+
   function normalizedPlate(value) {
     return cleanText(value).replace(/[（(][^)）]*[)）]/g, "").replace(/\s+/g, "").toUpperCase();
   }
@@ -344,38 +363,43 @@
   }
 
   async function execute(request, dependencies = {}) {
-    const context = {
-      documentRef: dependencies.documentRef || document,
-      locationRef: dependencies.locationRef || location,
-      authorization: request?.authorization,
-      fetchImpl: dependencies.fetchImpl || fetch,
-      WebSocketImpl: dependencies.WebSocketImpl || globalThis.WebSocket,
-      AbortControllerImpl: dependencies.AbortControllerImpl || AbortController,
-      setTimeoutImpl: dependencies.setTimeoutImpl || setTimeout,
-      clearTimeoutImpl: dependencies.clearTimeoutImpl || clearTimeout,
-      sleepImpl: dependencies.sleepImpl || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
-    };
-    if (!/^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(context.locationRef.hash || "")) {
-      return { status: "BLOCKED", errorCode: "PLATFORM_ROUTE_MISMATCH" };
+    try {
+      const context = {
+        documentRef: dependencies.documentRef || document,
+        locationRef: dependencies.locationRef || location,
+        authorization: request?.authorization,
+        fetchImpl: dependencies.fetchImpl || fetch,
+        WebSocketImpl: dependencies.WebSocketImpl || globalThis.WebSocket,
+        AbortControllerImpl: dependencies.AbortControllerImpl || AbortController,
+        setTimeoutImpl: dependencies.setTimeoutImpl || setTimeout,
+        clearTimeoutImpl: dependencies.clearTimeoutImpl || clearTimeout,
+        sleepImpl: dependencies.sleepImpl || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+      };
+      if (!/^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(context.locationRef.hash || "")) {
+        return { status: "BLOCKED", errorCode: "PLATFORM_ROUTE_MISMATCH" };
+      }
+      if (!validEvent(request?.event)
+        || request?.ruleAuthorization?.kind !== "PUBLISHED_RESPONSE_PLAN"
+        || !cleanText(request.ruleAuthorization.ruleId)
+        || !cleanText(request.ruleAuthorization.ruleSetVersion)) {
+        return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
+      }
+      const prepared = await prepareVehicle(context.documentRef, request.event, context.sleepImpl);
+      if (prepared.status !== "SUCCEEDED") return prepared;
+      if (request.operation === "VOICE") return executeVoice(request, context);
+      if (request.operation === "TEXT") return executeText(request, context);
+      if (request.operation === "MARK_PROCESSED") return executeMarkProcessed(request, context);
+      return { status: "BLOCKED", errorCode: "OPERATION_NOT_ALLOWED" };
+    } catch (error) {
+      return safeRuntimeException(error);
     }
-    if (!validEvent(request?.event)
-      || request?.ruleAuthorization?.kind !== "PUBLISHED_RESPONSE_PLAN"
-      || !cleanText(request.ruleAuthorization.ruleId)
-      || !cleanText(request.ruleAuthorization.ruleSetVersion)) {
-      return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
-    }
-    const prepared = await prepareVehicle(context.documentRef, request.event, context.sleepImpl);
-    if (prepared.status !== "SUCCEEDED") return prepared;
-    if (request.operation === "VOICE") return executeVoice(request, context);
-    if (request.operation === "TEXT") return executeText(request, context);
-    if (request.operation === "MARK_PROCESSED") return executeMarkProcessed(request, context);
-    return { status: "BLOCKED", errorCode: "OPERATION_NOT_ALLOWED" };
   }
 
   globalThis.HnPlatformActionRuntime = Object.freeze({
     ENDPOINTS,
     SPEEDING_TEXT,
     execute,
+    safeRuntimeException,
     normalizedPlate,
     alarmRow,
     alarmRowIsSelected,

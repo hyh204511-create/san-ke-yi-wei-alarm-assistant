@@ -291,3 +291,36 @@ test("当前监控页以精确报警行高亮确认车辆选择", async () => {
   assert.equal(selected, true);
   assert.equal(calls.length, 1);
 });
+
+test("动作运行异常只返回脱敏且有界的诊断信息", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const result = await runtime.execute({
+    operation: "VOICE",
+    actionId: "action:runtime-error",
+    authorization: "Bearer test-token",
+    event,
+    ruleAuthorization: ruleAuthorization(),
+  }, {
+    documentRef: {
+      querySelectorAll() {
+        throw new TypeError("failed at https://platform.example/path token_abcdefghijklmnopqrstuvwxyz123456 Bearer shortsecret");
+      },
+    },
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    fetchImpl: async () => response({ success: true }),
+    WebSocketImpl: class {},
+    AbortControllerImpl: AbortController,
+    setTimeoutImpl: setTimeout,
+    clearTimeoutImpl: clearTimeout,
+    sleepImpl: async () => {},
+  });
+  assert.equal(result.status, "UNKNOWN");
+  assert.equal(result.errorCode, "ACTION_RUNTIME_EXCEPTION");
+  assert.equal(result.errorName, "TypeError");
+  assert.match(result.errorMessage, /\[url\]/);
+  assert.match(result.errorMessage, /\[value\]/);
+  assert.match(result.errorMessage, /\[secret\]/);
+  assert.doesNotMatch(result.errorMessage, /platform\.example|abcdefghijklmnopqrstuvwxyz123456|shortsecret/);
+  assert.ok(result.errorMessage.length <= 160);
+});
