@@ -535,6 +535,38 @@ export async function validateAudioAsset(asset) {
   return { ok: errors.length === 0, errors };
 }
 
+export function extractPcmFromWav(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 44) throw new Error("固定语音资产不是有效WAV");
+  const ascii = (offset, length) => String.fromCharCode(...bytes.subarray(offset, offset + length));
+  if (ascii(0, 4) !== "RIFF" || ascii(8, 4) !== "WAVE") throw new Error("固定语音资产不是有效WAV");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let format = null;
+  let pcm = null;
+  for (let offset = 12; offset + 8 <= bytes.length;) {
+    const chunkId = ascii(offset, 4);
+    const size = view.getUint32(offset + 4, true);
+    const start = offset + 8;
+    const end = start + size;
+    if (end > bytes.length) throw new Error("固定语音WAV区块长度无效");
+    if (chunkId === "fmt " && size >= 16) {
+      format = {
+        audioFormat: view.getUint16(start, true),
+        channels: view.getUint16(start + 2, true),
+        sampleRate: view.getUint32(start + 4, true),
+        bitsPerSample: view.getUint16(start + 14, true),
+      };
+    } else if (chunkId === "data") {
+      pcm = bytes.slice(start, end);
+    }
+    offset = end + (size % 2);
+  }
+  if (!format || !pcm || format.audioFormat !== 1 || format.channels !== 1 || format.sampleRate !== 8000 || format.bitsPerSample !== 16) {
+    throw new Error("固定语音WAV必须是8kHz 16bit单声道PCM");
+  }
+  if (!pcm.length || pcm.length % 2 !== 0) throw new Error("固定语音PCM长度无效");
+  return pcm;
+}
+
 function ruleSpecificity(rule) {
   const match = rule.match || {};
   return [match.companyIds, match.companyNames, match.vehicleTypes, match.timeRanges, match.risks]

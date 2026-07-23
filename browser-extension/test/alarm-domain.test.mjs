@@ -10,6 +10,7 @@ import {
   enterpriseAccessForEvent,
   evaluateCompletion,
   evaluateRules,
+  extractPcmFromWav,
   extractAlarmCandidates,
   mergeAlarmEvents,
   maskLedgerRow,
@@ -492,4 +493,24 @@ test("音频资产校验PCM长度、时长和SHA-256", async () => {
   const invalid = await validateAudioAsset({ ...valid, sha256: "0".repeat(64) });
   assert.equal(invalid.ok, false);
   assert.match(invalid.errors.join("；"), /不一致/);
+});
+
+test("后台发布WAV只提取data区裸PCM并拒绝错误采样格式", () => {
+  const pcm = Buffer.from([1, 0, 2, 0, 3, 0, 4, 0]);
+  const fmt = Buffer.alloc(16);
+  fmt.writeUInt16LE(1, 0);
+  fmt.writeUInt16LE(1, 2);
+  fmt.writeUInt32LE(8000, 4);
+  fmt.writeUInt32LE(16000, 8);
+  fmt.writeUInt16LE(2, 12);
+  fmt.writeUInt16LE(16, 14);
+  const wav = Buffer.concat([
+    Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WAVEfmt "), Buffer.from([16, 0, 0, 0]), fmt,
+    Buffer.from("data"), Buffer.from([pcm.length, 0, 0, 0]), pcm,
+  ]);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  assert.deepEqual(Buffer.from(extractPcmFromWav(new Uint8Array(wav))), pcm);
+  const invalid = Buffer.from(wav);
+  invalid.writeUInt32LE(16000, 24);
+  assert.throws(() => extractPcmFromWav(new Uint8Array(invalid)), /8kHz/);
 });

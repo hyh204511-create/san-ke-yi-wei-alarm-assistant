@@ -7,6 +7,7 @@ import {
   enterpriseAccessForEvent,
   evaluateCompletion,
   evaluateRules,
+  extractPcmFromWav,
   extractAlarmCandidates,
   mergeAlarmEvents,
   normalizeAlarmRow,
@@ -512,17 +513,26 @@ async function loadVerifiedPcmBase64(attempt) {
   if (asset.sampleRate !== 8000 || asset.channels !== 1 || asset.bitsPerSample !== 16 || !asset.voiceBase64) {
     throw new Error("固定语音资产格式不符合8kHz 16bit单声道PCM要求");
   }
-  let bytes;
+  let wavBytes;
   try {
     const binary = atob(asset.voiceBase64);
-    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    wavBytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   } catch {
     throw new Error("固定语音资产Base64无效");
   }
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const prefix = new TextEncoder().encode("VOICE\0");
+  const hashMaterial = new Uint8Array(prefix.length + wavBytes.length);
+  hashMaterial.set(prefix, 0);
+  hashMaterial.set(wavBytes, prefix.length);
+  const digest = await crypto.subtle.digest("SHA-256", hashMaterial);
   const hash = [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, "0")).join("");
-  if (hash !== asset.contentHash || bytes.length % 2 !== 0 || bytes.length === 0) throw new Error("固定语音资产完整性校验失败");
-  return asset.voiceBase64;
+  if (hash !== asset.contentHash) throw new Error("固定语音资产完整性校验失败");
+  const pcmBytes = extractPcmFromWav(wavBytes);
+  let binary = "";
+  for (let offset = 0; offset < pcmBytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...pcmBytes.subarray(offset, Math.min(offset + 0x8000, pcmBytes.length)));
+  }
+  return btoa(binary);
 }
 
 async function livePlatformTab(senderTabId) {
