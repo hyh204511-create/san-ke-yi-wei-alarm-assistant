@@ -399,7 +399,10 @@
     if (message?.type === "PLATFORM_ACTION_EXECUTE") {
       Promise.resolve(globalThis.HnPlatformActionRuntime?.execute(message.request))
         .then((result) => sendResponse(result || { status: "BLOCKED", errorCode: "ACTION_RUNTIME_UNAVAILABLE" }))
-        .catch(() => sendResponse({ status: "UNKNOWN", errorCode: "ACTION_RUNTIME_EXCEPTION" }));
+        .catch((error) => sendResponse(
+          globalThis.HnPlatformActionRuntime?.safeRuntimeException?.(error)
+            || { status: "UNKNOWN", errorCode: "ACTION_RUNTIME_EXCEPTION" }
+        ));
       return true;
     }
     if (message?.type === "PLATFORM_ALARM_ROW_CHECK") {

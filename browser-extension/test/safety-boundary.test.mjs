@@ -38,6 +38,7 @@ test("真实动作执行器保持在隔离内容脚本并只接受后台已发�
   for (const diagnosticField of ["errorCode", "errorName", "errorMessage"]) {
     assert.match(worker, new RegExp(`"${diagnosticField}"`));
   }
+  assert.match(content, /safeRuntimeException\?\.\(error\)/);
   assert.match(worker, /\["receiptRef", "errorCode", "errorName", "errorMessage", "platformHttpStatus"/);
   assert.match(worker, /\^\[A-Za-z\]\[A-Za-z0-9\]\{0,40\}Error\$/);
   assert.match(worker, /\^\[\\x20-\\x7e\]\{0,160\}\$/);
