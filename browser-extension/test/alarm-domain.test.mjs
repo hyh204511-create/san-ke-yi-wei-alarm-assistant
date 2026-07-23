@@ -85,7 +85,7 @@ test("自动报警队列优先正式报警，无可执行正式报警时回退�
   const item = (id, sourceKind, alarmTime, overrides = {}) => ({
     event: {
       eventId: `alarm:id:${id}`, alarmId: id, sourceKind, alarmName: "超速驾驶",
-      alarmTime, vehicleId: `vehicle-${id}`, vehicleNo: `模拟${id.slice(-2)}`, certColor: "2", ...overrides,
+      alarmTime, updatedAt: new Date(now).toISOString(), vehicleId: `vehicle-${id}`, vehicleNo: `模拟${id.slice(-2)}`, certColor: "2", ...overrides,
     },
     decision: { action: "RESPONSE_PLAN" },
   });
@@ -95,6 +95,20 @@ test("自动报警队列优先正式报警，无可执行正式报警时回退�
   assert.equal(selectNextEligibleAutomaticAlarm([prewarning, formal, pending], now)?.event.alarmId, pending.event.alarmId);
   assert.equal(selectNextEligibleAutomaticAlarm([prewarning, { ...formal, action: { status: "UNKNOWN" } }], now)?.event.alarmId, prewarning.event.alarmId);
   assert.equal(selectNextEligibleAutomaticAlarm([{ ...formal, processing: { status: "PROCESSED" } }, prewarning], now)?.event.alarmId, prewarning.event.alarmId);
+});
+
+test("预报警必须仍在当前实时列表观察窗口内才可取得自动租约", () => {
+  const now = Date.parse("2026-07-23T20:20:00+08:00");
+  const base = {
+    eventId: "alarm:id:2079948988450365453", alarmId: "2079948988450365453",
+    sourceKind: "PREWARNING", alarmName: "超速驾驶", alarmTime: "2026-07-23 20:19:50",
+    vehicleId: "vehicle-current", vehicleNo: "模拟53", certColor: "2",
+  };
+  const decision = { action: "RESPONSE_PLAN" };
+  const stale = { event: { ...base, updatedAt: "2026-07-23T12:19:00.000Z" }, decision };
+  const current = { event: { ...base, updatedAt: "2026-07-23T12:19:50.000Z" }, decision };
+  assert.equal(selectNextEligibleAutomaticAlarm([stale], now), null);
+  assert.equal(selectNextEligibleAutomaticAlarm([current], now)?.event.alarmId, base.alarmId);
 });
 
 test("自动超速预报警保留PREWARNING来源并生成语音后文本计划", () => {

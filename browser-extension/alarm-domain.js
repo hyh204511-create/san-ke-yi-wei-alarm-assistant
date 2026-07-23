@@ -40,6 +40,11 @@ export function alarmEventTime(event) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function alarmObservationTime(event) {
+  const parsed = Date.parse(String(event?.updatedAt || event?.discoveredAt || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function compareAlarmOrder(left, right) {
   return Number(right?.priority || 0) - Number(left?.priority || 0)
     || Number(right?.time || 0) - Number(left?.time || 0);
@@ -64,13 +69,22 @@ export function selectLatestEligibleSpeedingPrewarning(items, nowMs = Date.now()
   return candidates[0] || null;
 }
 
-export function selectNextEligibleAutomaticAlarm(items, nowMs = Date.now(), maxAgeMs = 10 * 60 * 1000) {
+export function selectNextEligibleAutomaticAlarm(
+  items,
+  nowMs = Date.now(),
+  maxAgeMs = 10 * 60 * 1000,
+  prewarningObservationMaxAgeMs = 30_000
+) {
   const candidates = (items || []).filter((item) => {
     const event = item?.event;
     const eventTime = alarmEventTime(event);
+    const observationTime = alarmObservationTime(event);
     const formal = ["REALTIME", "PENDING"].includes(event?.sourceKind);
     const approvedPrewarning = event?.sourceKind === "PREWARNING"
-      && String(event?.alarmName || "").trim() === "超速驾驶";
+      && String(event?.alarmName || "").trim() === "超速驾驶"
+      && observationTime > 0
+      && observationTime <= nowMs + 60_000
+      && nowMs - observationTime <= prewarningObservationMaxAgeMs;
     return (formal || approvedPrewarning)
       && item?.decision?.action === "RESPONSE_PLAN"
       && /^\d{10,30}$/.test(String(event?.alarmId || ""))
