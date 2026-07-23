@@ -3,7 +3,8 @@ import logging
 import time
 import uuid
 
-logger = logging.getLogger("sandbox.requests")
+
+logger = logging.getLogger("assistant.requests")
 
 
 class RequestIdMiddleware:

@@ -163,13 +163,24 @@ def validate_rule_payload(payload):
         if len(channels) <= 1 and strategy not in {"SINGLE", "SEQUENTIAL"}:
             errors.append(f"{prefix}单渠道规则不需要FALLBACK或PARALLEL策略")
         fallback = rule.get("fallback", "MANUAL")
-        if fallback not in {"MANUAL", "RECORD_ONLY"}:
+        if fallback not in {"MANUAL", "RECORD_ONLY", "TEXT_ON_VOICE_FAILURE"}:
             errors.append(f"{prefix}.fallback无效")
         source_kinds = (match or {}).get("sourceKinds", []) if isinstance(match, dict) else []
         if source_kinds and (not isinstance(source_kinds, list) or any(kind not in {"REALTIME", "TECHNICAL", "PENDING", "PREWARNING", "HISTORY", "DETAIL"} for kind in source_kinds)):
             errors.append(f"{prefix}.match.sourceKinds无效")
-        if handling_mode == "AUTO" and source_kinds and any(kind in {"PREWARNING", "HISTORY", "DETAIL"} for kind in source_kinds):
-            errors.append(f"{prefix}预报警、历史和详情来源不能触发自动响应")
+        if handling_mode == "AUTO" and source_kinds and any(kind in {"HISTORY", "DETAIL"} for kind in source_kinds):
+            errors.append(f"{prefix}历史和详情来源不能触发自动响应")
+        prewarning_auto = handling_mode == "AUTO" and "PREWARNING" in source_kinds
+        if prewarning_auto:
+            alarm_names = (match or {}).get("alarmNames", []) if isinstance(match, dict) else []
+            speeding_channels = [channel.get("type") for channel in channels if isinstance(channel, dict)] == ["VOICE", "TEXT"]
+            speeding_assets = len(channels) == 2 and channels[0].get("assetId") == "voice-speeding-v1" and channels[1].get("templateId") == "text-speeding-v1"
+            if source_kinds != ["PREWARNING"] or alarm_names != ["超速驾驶"]:
+                errors.append(f"{prefix}当前仅允许显式PREWARNING来源的超速驾驶自动规则")
+            if not speeding_channels or not speeding_assets or strategy != "SEQUENTIAL" or fallback != "TEXT_ON_VOICE_FAILURE":
+                errors.append(f"{prefix}超速预报警必须固定为已审核语音后文本顺序流程")
+        elif fallback == "TEXT_ON_VOICE_FAILURE":
+            errors.append(f"{prefix}.fallback仅允许已审核超速预报警规则使用")
         retry_policy = rule.get("retryPolicy")
         if handling_mode == "AUTO" and retry_policy != AUTO_RETRY_POLICY:
             errors.append(f"{prefix}.retryPolicy必须固定为明确失败后5秒、10秒重试，30秒内转人工")

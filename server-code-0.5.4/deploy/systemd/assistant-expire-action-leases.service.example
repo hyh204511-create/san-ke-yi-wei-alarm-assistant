@@ -7,5 +7,5 @@ Wants=network-online.target
 Type=oneshot
 User=assistant
 Group=assistant
-WorkingDirectory=/opt/three-passenger-assistant/sandbox
-ExecStart=/opt/three-passenger-assistant/sandbox/.venv/bin/python manage.py expire_action_leases
+WorkingDirectory=/opt/three-passenger-assistant/server
+ExecStart=/opt/three-passenger-assistant/server/.venv/bin/python manage.py expire_action_leases

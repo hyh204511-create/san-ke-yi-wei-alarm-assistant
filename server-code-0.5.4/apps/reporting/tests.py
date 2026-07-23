@@ -104,7 +104,7 @@ class ReportingFlowTests(TestCase):
         self.assertEqual(fact.completion_status, "UNKNOWN_MANUAL")
         self.assertTrue(fact.completion_manual_required)
         lease = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="voice-device", action_type="VOICE_INTERCOM", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="voice-device", action_type="VOICE_INTERCOM",
         )
         lease.status = ActionLease.Status.COMPLETED
         lease.result_code = "SUCCEEDED"
@@ -226,7 +226,7 @@ class ReportingFlowTests(TestCase):
         self.ingest()
         fact = AlarmFact.objects.get()
         completed = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="device-completed", action_type="PLAN", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="device-completed", action_type="PLAN",
         )
         completed.status = ActionLease.Status.COMPLETED
         completed.result_code = "SUCCEEDED"
@@ -234,7 +234,7 @@ class ReportingFlowTests(TestCase):
         completed.save(update_fields=["status", "result_code", "finished_at", "updated_at"])
         with self.assertRaises(services.ReportingError) as already_completed:
             services.acquire_action_lease(
-                actor=self.monitor, fact=fact, device_id="device-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=fact, device_id="device-replay", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(already_completed.exception.code, "ACTION_ALREADY_COMPLETED")
 
@@ -244,7 +244,7 @@ class ReportingFlowTests(TestCase):
         completed.save(update_fields=["action_type", "status", "result_code", "updated_at"])
         with self.assertRaises(services.ReportingError) as unknown:
             services.acquire_action_lease(
-                actor=self.monitor, fact=fact, device_id="device-unknown-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=fact, device_id="device-unknown-replay", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(unknown.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
 
@@ -260,7 +260,7 @@ class ReportingFlowTests(TestCase):
         self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.UNPROCESSED)
 
         lease = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="processing-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="processing-device", action_type="RESPONSE_PLAN",
         )
         fact.refresh_from_db()
         self.assertEqual(fact.processing_status, AlarmFact.ProcessingStatus.EXECUTING)
@@ -285,7 +285,7 @@ class ReportingFlowTests(TestCase):
         ActionLease.objects.filter(fact=fact).delete()
         with self.assertRaises(services.ReportingError) as replay:
             services.acquire_action_lease(
-                actor=self.monitor, fact=fact, device_id="processing-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=fact, device_id="processing-replay", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(replay.exception.code, "ACTION_ALREADY_COMPLETED")
 
@@ -298,7 +298,7 @@ class ReportingFlowTests(TestCase):
         )
         fact = AlarmFact.objects.get(event_id=event["eventId"])
         lease = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="unknown-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="unknown-device", action_type="RESPONSE_PLAN",
         )
         services.record_action_result(actor=self.monitor, payload={
             "leaseId": str(lease.public_id), "leaseToken": lease._plain_token,
@@ -311,7 +311,7 @@ class ReportingFlowTests(TestCase):
         fact.action_leases.all().delete()
         with self.assertRaises(services.ReportingError) as caught:
             services.acquire_action_lease(
-                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(caught.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
 
@@ -324,13 +324,13 @@ class ReportingFlowTests(TestCase):
         )
         fact = AlarmFact.objects.get(event_id=event["eventId"])
         lease = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="expired-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="expired-device", action_type="RESPONSE_PLAN",
         )
         lease.expires_at = timezone.now() - timedelta(seconds=1)
         lease.save(update_fields=["expires_at", "updated_at"])
         with self.assertRaises(services.ReportingError) as expired:
             services.acquire_action_lease(
-                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=fact, device_id="second-device", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(expired.exception.code, "ACTION_RESULT_UNKNOWN_MANUAL")
 
@@ -347,7 +347,7 @@ class ReportingFlowTests(TestCase):
         )
         manual_fact = AlarmFact.objects.get(event_id=manual_event["eventId"])
         manual_lease = services.acquire_action_lease(
-            actor=self.monitor, fact=manual_fact, device_id="manual-device", action_type="RESPONSE_PLAN", mode="SANDBOX",
+            actor=self.monitor, fact=manual_fact, device_id="manual-device", action_type="RESPONSE_PLAN",
         )
         services.record_action_result(actor=self.monitor, payload={
             "leaseId": str(manual_lease.public_id), "leaseToken": manual_lease._plain_token,
@@ -357,7 +357,7 @@ class ReportingFlowTests(TestCase):
         manual_fact.action_leases.all().delete()
         with self.assertRaises(services.ReportingError) as manual:
             services.acquire_action_lease(
-                actor=self.monitor, fact=manual_fact, device_id="manual-replay", action_type="RESPONSE_PLAN", mode="SANDBOX",
+                actor=self.monitor, fact=manual_fact, device_id="manual-replay", action_type="RESPONSE_PLAN",
             )
         self.assertEqual(manual.exception.code, "ACTION_MANUAL_REVIEW_REQUIRED")
 
@@ -377,7 +377,7 @@ class ReportingFlowTests(TestCase):
         second_fact = AlarmFact.objects.get(event_id=second_event["eventId"])
         lease = services.acquire_action_lease(
             actor=self.monitor, fact=first_fact, device_id="scope-device-a",
-            action_type="RESPONSE_PLAN", mode="SANDBOX",
+            action_type="RESPONSE_PLAN",
         )
         services.record_action_result(actor=self.monitor, payload={
             "leaseId": str(lease.public_id), "leaseToken": lease._plain_token,
@@ -393,7 +393,7 @@ class ReportingFlowTests(TestCase):
         with self.assertRaises(services.ReportingError) as cooldown:
             services.acquire_action_lease(
                 actor=other, fact=second_fact, device_id="scope-device-b",
-                action_type="RESPONSE_PLAN", mode="SANDBOX",
+                action_type="RESPONSE_PLAN",
             )
         self.assertEqual(cooldown.exception.code, "ACTION_SCOPE_COOLDOWN")
 
@@ -405,7 +405,7 @@ class ReportingFlowTests(TestCase):
         with self.assertRaises(services.ReportingError) as blocked:
             services.acquire_action_lease(
                 actor=self.monitor, fact=fact, device_id="unstable-scope-device",
-                action_type="RESPONSE_PLAN", mode="SANDBOX",
+                action_type="RESPONSE_PLAN",
             )
         self.assertEqual(blocked.exception.code, "ACTION_SCOPE_IDENTITY_REQUIRED")
 
@@ -415,19 +415,19 @@ class ReportingFlowTests(TestCase):
         fact = AlarmFact.objects.get()
         DeviceRegistration.objects.create(
             device_id="device-action-1", user=self.monitor, platform_account_ref="report-platform",
-            extension_version="0.5.3", session_status="AUTHENTICATED", platform_identity_status="UNKNOWN",
+            extension_version="0.6.0", session_status="AUTHENTICATED", platform_identity_status="VERIFIED",
         )
         self.client.force_login(self.monitor)
         acquire = self.post_json(reverse("report-action-lease-acquire-api"), {
             "eventId": fact.event_id, "deviceId": "device-action-1", "actionType": "TEXT_TTS",
-            "mode": "SANDBOX", "durationSeconds": 90,
+            "durationSeconds": 90,
         }, action_token=True)
         self.assertEqual(acquire.status_code, 201)
         lease_data = acquire.json()["data"]
         self.assertTrue(lease_data["leaseToken"])
         result = self.post_json(reverse("report-action-lease-result-api", args=[lease_data["leaseId"]]), {
             "leaseToken": lease_data["leaseToken"], "deviceId": "device-action-1", "resultCode": "FAILED",
-            "actionId": "action-report-failure", "result": {"errorCode": "TEXT_FAILED", "simulated": True},
+            "actionId": "action-report-failure", "result": {"errorCode": "TEXT_FAILED"},
         }, action_token=True)
         self.assertEqual(result.status_code, 200)
         self.assertTrue(result.json()["data"]["notificationCreated"])
@@ -445,13 +445,13 @@ class ReportingFlowTests(TestCase):
         DutyNotification.objects.all().delete()
         fact = AlarmFact.objects.get()
         lease = services.acquire_action_lease(
-            actor=self.monitor, fact=fact, device_id="voice-review-device", action_type="VOICE_INTERCOM", mode="SANDBOX",
+            actor=self.monitor, fact=fact, device_id="voice-review-device", action_type="VOICE_INTERCOM",
         )
         lease, notified = services.record_action_result(
             actor=self.monitor,
             payload={
                 "leaseId": str(lease.public_id), "leaseToken": lease._plain_token, "deviceId": "voice-review-device",
-                "resultCode": "SUCCEEDED", "actionId": "voice-review-action", "result": {"simulated": True, "playbackStarted": True},
+                "resultCode": "SUCCEEDED", "actionId": "voice-review-action", "result": {"playbackStarted": True},
             },
         )
         self.assertTrue(notified)
@@ -469,7 +469,7 @@ class ReportingFlowTests(TestCase):
         )
         self.client.force_login(self.monitor)
         response = self.post_json(reverse("report-action-lease-acquire-api"), {
-            "eventId": fact.event_id, "deviceId": "device-action-unknown", "actionType": "VOICE_INTERCOM", "mode": "LIVE",
+            "eventId": fact.event_id, "deviceId": "device-action-unknown", "actionType": "VOICE_INTERCOM",
         }, action_token=True)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["code"], "PLATFORM_IDENTITY_REQUIRED")

@@ -7,5 +7,5 @@ Wants=network-online.target
 Type=oneshot
 User=assistant
 Group=assistant
-WorkingDirectory=/opt/three-passenger-assistant/sandbox
-ExecStart=/bin/sh -c '/opt/three-passenger-assistant/sandbox/.venv/bin/python manage.py purge_expired_exports && /opt/three-passenger-assistant/sandbox/.venv/bin/python manage.py purge_expired_voice_evidence && /opt/three-passenger-assistant/sandbox/.venv/bin/python manage.py purge_expired_operational_data'
+WorkingDirectory=/opt/three-passenger-assistant/server
+ExecStart=/bin/sh -c '/opt/three-passenger-assistant/server/.venv/bin/python manage.py purge_expired_exports && /opt/three-passenger-assistant/server/.venv/bin/python manage.py purge_expired_voice_evidence && /opt/three-passenger-assistant/server/.venv/bin/python manage.py purge_expired_operational_data'

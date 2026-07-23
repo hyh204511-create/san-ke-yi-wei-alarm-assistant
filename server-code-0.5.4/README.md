@@ -1,78 +1,50 @@
-# 三客一危省平台契约沙箱
+# 三客一危实名助手服务
 
-本目录是供浏览器插件开发使用的本机Django模拟环境。它复刻当前已知接口路径、字段样例、报警列表、证据区、详情弹窗和异常场景，不声称是省平台的完整实现。
+本目录是浏览器扩展配套的 Django 正式助手服务，只提供实名身份、角色与企业范围、值班班次、规则与响应资产治理、全局动作租约、报警事实、处置工单、五来源报表任务、导出和审计能力。
 
-演练触发、模拟文本和模拟对讲接口仅在 `SANDBOX_DEBUG=1` 时注册；生产模式只保留 `/health` 和检查数据库的 `/ready`，不会暴露沙箱动作路由。
+演练平台、模拟报警、模拟文本、模拟对讲以及 `/sandbox/*` 路由已全部移除。真实省平台凭证不进入 Django；语音、文本和平台已处理动作只能由浏览器扩展在用户已登录的省平台标签内执行。
 
-正式部署继续使用 Django，不引入 FastAPI。开发环境未设置 `DATABASE_URL` 时使用 SQLite；当 `SANDBOX_DEBUG=0` 时必须提供 PostgreSQL `DATABASE_URL`，否则服务拒绝启动。Linux/Docker 使用 Gunicorn，Windows 原生服务使用 Waitress，生产环境禁止使用 `manage.py runserver`。
-
-## 启动
-
-需要 Python 3.11+ 和 Django 5.2：
+## 本地启动
 
 ```powershell
-cd sandbox
+cd server-code-0.5.4
+python -m pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver 127.0.0.1:18080
 ```
 
-打开：`http://127.0.0.1:18080/`。
+本地开发未设置 `DATABASE_URL` 时使用 `assistant.sqlite3`。正式环境必须设置 `ASSISTANT_DEBUG=0`、独立的 `ASSISTANT_SECRET_KEY`、PostgreSQL `DATABASE_URL`、允许域名、CSRF 来源以及独立的数据加密密钥；正式环境使用 Gunicorn 或 Waitress，不使用 `manage.py runserver`。
 
-### 实名助手账号
+## 健康检查
 
-首次联调前通过环境变量提供不少于12位的本机密码，再创建实名账号。密码不会写入命令参数或仓库：
+- `GET /health`：进程存活。
+- `GET /ready`：数据库和必要配置就绪。
+- `GET /assistant/api/me`：当前实名账号、角色、企业范围和班次。
+
+## 真实动作边界
+
+- 插件只能读取后台当前已发布规则和已发布响应资产。
+- 真实动作前必须通过实名权限、当前班次、企业范围、平台身份、设备登记和全局租约检查。
+- 语音、文本/TTS、平台已处理登记分阶段执行，每个阶段前重新核验动态安全条件。
+- 失败、超时、结果未知、规则撤回、资产变化、会话变化或租约失效时立即停止并转人工。
+- 同一报警和同车同类报警由服务端动作租约与冷却窗口阻止多账号重复、并发下发。
+
+## 五来源报表
+
+报表任务固定使用以下来源：
+
+- `ALARM_DISPOSAL_RATE`
+- `ALARM_PROCESSING_RATE`
+- `ALARM_CENTER`
+- `VEHICLE_BASE_INFO`
+- `TRACK_COMPLETENESS`
+
+Django 冻结任务、校验分页和字段签名、按企业生成报警日报/周报/月报与车辆动态监控日报；浏览器扩展仅在现有省平台授权会话内调用已确认白名单接口。缺页、字段变化、周期错误或范围无法确认时任务进入 `DATA_INCOMPLETE`，不生成正式文件。
+
+## 测试
 
 ```powershell
-$env:ASSISTANT_BOOTSTRAP_PASSWORD="请替换为本机强密码"
-python manage.py bootstrap_assistant --username local-admin --display-name "本地系统管理员" --employee-code LOCAL-ADMIN --role SYSTEM_ADMIN
-Remove-Item Env:ASSISTANT_BOOTSTRAP_PASSWORD
+python manage.py test
 ```
 
-访问 `http://127.0.0.1:18080/assistant/login` 登录。浏览器插件只读取服务端实名会话和权限；没有实名档案的普通 Django 账号不能进入助手系统。
-
-同时启动插件本机采集服务：
-
-```powershell
-cd ..\browser-extension
-npm.cmd start
-```
-
-在Chrome/Edge扩展页重新加载 `browser-extension/`，然后刷新沙箱页面。
-
-## 首次演练规则
-
-页面顶部可下载：
-
-- `audio-sandbox-v1.wav`：1秒、8kHz、16bit、单声道PCM测试音频。
-- `sandbox-rules.json`：匹配报警类型ID `64` 的已确认沙箱规则，只允许演练或本机沙箱动作，不允许真实对讲。
-
-先在插件设置中用资产ID `audio-sandbox-v1` 导入并确认测试音频，再导入规则JSON：
-
-- 保持“演练模式”可验证不访问任何对讲接口的规则闭环。
-- 切换“沙箱动作”可让插件调用 `127.0.0.1:18080` 的模拟对讲接口，验证成功和失败回执。
-
-点击页面顶部“触发新报警”，即可验证采集、归并、规则、动作和台账。
-
-## 场景
-
-| 场景 | 行为 |
-| --- | --- |
-| 正常流程 | 返回已知字段和10条分页记录 |
-| 重复报警 | 同一响应重复第一条报警，用于验证业务去重 |
-| 字段缺失 | 移除驾驶员、企业和位置 |
-| 响应结构变化 | 使用 `result.records` 替代 `data` |
-| 登录失效 | 业务接口返回401 |
-| 服务异常 | 业务接口返回500 |
-| 慢响应 | 业务接口延迟约1.2秒 |
-| 对讲失败 | 沙箱对讲按钮返回503并留下尝试记录 |
-
-场景控制接口仍保持可用，以便从异常场景切回正常。
-
-## 已模拟接口
-
-- 报警类型、实时未处理报警、报警查询、未处理计数、报警详情、技术报警。
-- 车辆组织树、车辆详情、车辆分类。
-- 查岗列表。
-- 沙箱触发报警、场景切换、重置和模拟对讲回执。
-
-真实平台接入仍需校准接口契约、鉴权、DOM选择器和动作回执，不能只修改域名后直接上线。
+部署步骤见 [README-部署说明.md](README-部署说明.md) 和 `deploy/linux-postgresql.md`。

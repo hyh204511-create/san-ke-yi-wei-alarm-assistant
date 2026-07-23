@@ -29,7 +29,7 @@ ROLE_PERMISSIONS = {
         "alarm.view", "rule.runtime", "session.keepalive.execute",
     },
     # Separate role for staff who are allowed to take over a case or execute
-    # an approved sandbox/live action. It cannot be combined with collection,
+    # an approved live action. It cannot be combined with collection,
     # rule configuration, or rule review roles.
     RoleAssignment.Role.MONITOR_OPERATOR: {
         "alarm.view", "disposal.takeover", "disposal.note", "disposal.complete",

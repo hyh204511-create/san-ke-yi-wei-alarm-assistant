@@ -36,7 +36,7 @@ class ReportingError(Exception):
 ACTION_RESULT_CODES = {"EXECUTING", "SUCCEEDED", "FAILED", "UNKNOWN", "BLOCKED", "MANUAL_REQUIRED"}
 ACTION_FAILURE_CODES = {"FAILED", "UNKNOWN", "BLOCKED", "MANUAL_REQUIRED"}
 SAFE_ACTION_RESULT_KEYS = {
-    "receiptRef", "errorCode", "latencyMs", "attemptNumber", "simulated", "terminalTts",
+    "receiptRef", "errorCode", "latencyMs", "attemptNumber", "terminalTts",
     "playbackStarted", "platformHttpStatus", "messageCode", "processingStatus", "voiceStatus",
     "textStatus", "fallbackUsed", "bytesSent", "durationMs",
 }
@@ -280,7 +280,7 @@ def _lease_token_hash(token):
 
 
 @transaction.atomic
-def acquire_action_lease(*, actor, fact, device_id, action_type, duration_seconds=120, mode="LIVE", require_registered_device=False):
+def acquire_action_lease(*, actor, fact, device_id, action_type, duration_seconds=120, require_registered_device=False):
     require_reporting_permission(actor, "action.execute", require_shift=True)
     fact = AlarmFact.objects.select_for_update().get(pk=fact.pk)
     device_id = str(device_id or "").strip()
@@ -289,7 +289,7 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
     device = DeviceRegistration.objects.filter(device_id=device_id, user=actor, is_active=True).first()
     if require_registered_device and not device:
         raise ReportingError("动作设备尚未登记", "DEVICE_NOT_REGISTERED", 409)
-    if device and str(mode or "LIVE").upper() == "LIVE" and device.platform_identity_status != "VERIFIED":
+    if require_registered_device and device.platform_identity_status != "VERIFIED":
         raise ReportingError("省平台账号身份尚未核验，禁止真实动作", "PLATFORM_IDENTITY_REQUIRED", 409)
     action_type = str(action_type or "").strip().upper()
     action_type = {"TEXT": "TEXT_TTS", "VOICE": "VOICE_INTERCOM", "PLAN": "RESPONSE_PLAN"}.get(action_type, action_type)
@@ -380,7 +380,7 @@ def _safe_action_result(payload):
                 safe[key] = max(0, min(int(value), 300000))
             except (TypeError, ValueError) as exc:
                 raise ReportingError("动作回执数字字段无效", "INVALID_ACTION_RESULT", 422) from exc
-        elif key in {"simulated", "terminalTts", "playbackStarted", "fallbackUsed"}:
+        elif key in {"terminalTts", "playbackStarted", "fallbackUsed"}:
             if not isinstance(value, bool):
                 raise ReportingError("动作回执布尔字段无效", "INVALID_ACTION_RESULT", 422)
             safe[key] = value

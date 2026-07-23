@@ -13,7 +13,7 @@
 ## 生产部署（Docker，推荐）
 
 1. 将 `.env.production.example` 复制为 `.env.production`，只在服务器上填写真实值；不要把该文件提交或发回聊天窗口。
-2. 至少更换以下值：`SANDBOX_SECRET_KEY`、`DATABASE_URL`、`SENSITIVE_DATA_KEY`、`EVIDENCE_MASTER_KEY`、`COLLECTOR_DATA_KEY`、允许的域名和 CSRF 来源。
+2. 至少更换以下值：`ASSISTANT_SECRET_KEY`、`DATABASE_URL`、`SENSITIVE_DATA_KEY`、`EVIDENCE_MASTER_KEY`、`COLLECTOR_DATA_KEY`、允许的域名和 CSRF 来源。
 3. 确认 PostgreSQL 已创建数据库和应用账号，并限制只允许服务器出口 IP 访问。
 4. 执行：
 
@@ -53,7 +53,7 @@ unset ASSISTANT_BOOTSTRAP_PASSWORD
 - `SYSTEM_ADMIN`：唯一可以生成、发布、导出和下载日报/月报；同时负责用户、企业范围和保活策略配置。
 - `RULE_CONFIGURER`：只能起草、修改和提交规则；审核与发布由 `RULE_REVIEWER` 完成。
 - `UNIT_USER`：采集员只读查看授权报警数据，读取已发布运行规则，并提交设备心跳/保活审计；不能处置、执行业务动作或导出报表。
-- `MONITOR_OPERATOR`：独立承接需要班次和动作租约的监控处置/沙箱动作，不得与采集员、规则配置员或规则审核员混用。
+- `MONITOR_OPERATOR`：独立承接需要班次和动作租约的真实监控处置，不得与采集员、规则配置员或规则审核员混用。
 - 保活固定白名单为报警预处理页唯一查询、实时监控页只读观察、预警列表页只读观察；不支持任意选择器、导航、刷新或业务按钮点击。
 
 ## 验证
@@ -74,6 +74,6 @@ python manage.py test --verbosity 1
 
 - 服务器操作系统、固定内网地址、HTTPS 域名和证书；
 - PostgreSQL 地址、端口、数据库名、账号、SSL 模式和备份/PITR；
-- `SANDBOX_ALLOWED_HOSTS` 与 `SANDBOX_CSRF_TRUSTED_ORIGINS`；
+- `ASSISTANT_ALLOWED_HOSTS` 与 `ASSISTANT_CSRF_TRUSTED_ORIGINS`；
 - 数据、审计、导出文件和证据的保存周期；
 - 服务器运维、备份恢复和安全补丁责任人。

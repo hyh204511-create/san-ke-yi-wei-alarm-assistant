@@ -11,7 +11,7 @@
 
 ## Docker 启动
 
-在 `sandbox` 目录：
+在 `server-code-0.5.4` 目录：
 
 可优先使用 [`deploy/docker-compose.production.yml`](docker-compose.production.yml)；其中只绑定本机 `127.0.0.1:8000`，云 PostgreSQL 不在 Compose 中运行：
 
@@ -95,4 +95,4 @@ python manage.py purge_expired_operational_data
 - PostgreSQL不对办公网开放；
 - 浏览器插件服务器地址通过受控部署配置注入；
 - 未有 HTTPS 证书前只能在内网测试，不进入生产使用。
-- `apps.platform_sim` 的演练触发、模拟文本和模拟对讲路由仅在 `SANDBOX_DEBUG=1` 注册；生产只提供根路径 `/health` 和会检查数据库的 `/ready`，不会暴露演练动作。
+- 演练触发、模拟文本和模拟对讲应用已从服务端移除，开发与生产环境均不注册这些接口。

@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.urls import include, path
 
 from .health import health, ready
@@ -13,6 +12,3 @@ urlpatterns = [
     path("health", health, name="assistant-health"),
     path("ready", ready, name="assistant-ready"),
 ]
-
-if settings.ENABLE_SIMULATION_ROUTES:
-    urlpatterns.append(path("", include("apps.platform_sim.urls")))

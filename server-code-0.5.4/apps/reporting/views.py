@@ -330,7 +330,7 @@ def event_upsert_api(request):
 @ingest_api_view
 def action_lease_acquire_api(request):
     data = payload(request)
-    allowed = {"eventId", "deviceId", "actionType", "durationSeconds", "mode"}
+    allowed = {"eventId", "deviceId", "actionType", "durationSeconds"}
     if set(data) - allowed:
         raise services.ReportingError("动作租约请求包含未允许字段", "INVALID_ACTION_LEASE", 422)
     fact = services.fact_for_event(actor=request.user, event_id=data.get("eventId"))
@@ -340,7 +340,6 @@ def action_lease_acquire_api(request):
         device_id=data.get("deviceId"),
         action_type=data.get("actionType"),
         duration_seconds=data.get("durationSeconds", 120),
-        mode=data.get("mode", "LIVE"),
         require_registered_device=True,
     )
     return JsonResponse({"ok": True, "data": action_lease_data(lease, include_token=True)}, status=201)

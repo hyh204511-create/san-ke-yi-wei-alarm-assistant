@@ -4,23 +4,22 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = os.environ.get("SANDBOX_SECRET_KEY", "local-sandbox-only-not-for-production")
-DEBUG = os.environ.get("SANDBOX_DEBUG", "1") == "1"
-ENABLE_SIMULATION_ROUTES = DEBUG
-if not DEBUG and SECRET_KEY == "local-sandbox-only-not-for-production":
-    raise RuntimeError("Production mode requires a dedicated SANDBOX_SECRET_KEY")
+SECRET_KEY = os.environ.get("ASSISTANT_SECRET_KEY", "local-assistant-only-not-for-production")
+DEBUG = os.environ.get("ASSISTANT_DEBUG", "1") == "1"
+if not DEBUG and SECRET_KEY == "local-assistant-only-not-for-production":
+    raise RuntimeError("Production mode requires a dedicated ASSISTANT_SECRET_KEY")
 if not DEBUG and (len(SECRET_KEY) < 50 or len(set(SECRET_KEY)) < 5):
-    raise RuntimeError("Production SANDBOX_SECRET_KEY must be at least 50 characters and sufficiently random")
+    raise RuntimeError("Production ASSISTANT_SECRET_KEY must be at least 50 characters and sufficiently random")
 ALLOW_DERIVED_DATA_KEYS = os.environ.get(
     "ALLOW_DERIVED_DATA_KEYS",
     "1" if DEBUG else "0",
 ) == "1"
-ALLOWED_HOSTS = [item.strip() for item in os.environ.get("SANDBOX_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if item.strip()]
-CSRF_TRUSTED_ORIGINS = [item.strip() for item in os.environ.get("SANDBOX_CSRF_TRUSTED_ORIGINS", "").split(",") if item.strip()]
+ALLOWED_HOSTS = [item.strip() for item in os.environ.get("ASSISTANT_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if item.strip()]
+CSRF_TRUSTED_ORIGINS = [item.strip() for item in os.environ.get("ASSISTANT_CSRF_TRUSTED_ORIGINS", "").split(",") if item.strip()]
 if not DEBUG and (not ALLOWED_HOSTS or ALLOWED_HOSTS == ["127.0.0.1", "localhost"]):
-    raise RuntimeError("Production SANDBOX_ALLOWED_HOSTS must name the deployed host")
+    raise RuntimeError("Production ASSISTANT_ALLOWED_HOSTS must name the deployed host")
 if not DEBUG and not CSRF_TRUSTED_ORIGINS:
-    raise RuntimeError("Production SANDBOX_CSRF_TRUSTED_ORIGINS must contain the HTTPS origin")
+    raise RuntimeError("Production ASSISTANT_CSRF_TRUSTED_ORIGINS must contain the HTTPS origin")
 
 
 def _validate_production_key(name):
@@ -48,7 +47,6 @@ INSTALLED_APPS = [
     "apps.disposals",
     "apps.reporting",
     "apps.evidence",
-    "apps.platform_sim",
 ]
 
 MIDDLEWARE = [
@@ -58,7 +56,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "apps.platform_sim.middleware.RequestIdMiddleware",
+    "apps.governance.middleware.RequestIdMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -98,7 +96,7 @@ if DATABASE_URL:
 elif not DEBUG:
     raise RuntimeError("Production mode requires DATABASE_URL for PostgreSQL")
 else:
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "sandbox.sqlite3"}}
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "assistant.sqlite3"}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -109,9 +107,9 @@ USE_TZ = True
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
-SECURE_HSTS_SECONDS = int(os.environ.get("SANDBOX_SECURE_HSTS_SECONDS", "0" if DEBUG else "31536000"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("SANDBOX_SECURE_HSTS_INCLUDE_SUBDOMAINS", "1" if not DEBUG else "0") == "1"
-SECURE_HSTS_PRELOAD = os.environ.get("SANDBOX_SECURE_HSTS_PRELOAD", "1" if not DEBUG else "0") == "1"
+SECURE_HSTS_SECONDS = int(os.environ.get("ASSISTANT_SECURE_HSTS_SECONDS", "0" if DEBUG else "31536000"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("ASSISTANT_SECURE_HSTS_INCLUDE_SUBDOMAINS", "1" if not DEBUG else "0") == "1"
+SECURE_HSTS_PRELOAD = os.environ.get("ASSISTANT_SECURE_HSTS_PRELOAD", "1" if not DEBUG else "0") == "1"
 LOGIN_URL = "/assistant/login"
 LOGIN_REDIRECT_URL = "/assistant/"
 LOGOUT_REDIRECT_URL = "/assistant/login"
@@ -119,7 +117,7 @@ REPORT_EXPORT_DIR = os.environ.get("REPORT_EXPORT_DIR", str(BASE_DIR / "report-e
 EVIDENCE_EXPORT_DIR = os.environ.get("EVIDENCE_EXPORT_DIR", str(BASE_DIR / "evidence-exports"))
 DATA_RETENTION_DAYS = int(os.environ.get("DATA_RETENTION_DAYS", "365"))
 REPORT_EXPORT_RETENTION_DAYS = int(os.environ.get("REPORT_EXPORT_RETENTION_DAYS", "7"))
-SECURE_SSL_REDIRECT = os.environ.get("SANDBOX_SECURE_SSL_REDIRECT", "0" if DEBUG else "1") == "1"
+SECURE_SSL_REDIRECT = os.environ.get("ASSISTANT_SECURE_SSL_REDIRECT", "0" if DEBUG else "1") == "1"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
