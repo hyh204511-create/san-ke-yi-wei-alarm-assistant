@@ -413,6 +413,47 @@ class SessionKeepaliveGovernanceTests(TestCase):
         self.assertEqual(device.platform_visible_scope_hash, "a" * 64)
         self.assertEqual(device.platform_permission_summary, {"alarm.read": True})
 
+    def test_fresh_device_registration_blocks_second_device(self):
+        self.client.force_login(self.operator)
+        payload = {
+            "extensionVersion": "0.6.0", "platformAccountRef": "platform-ref-keepalive",
+            "sessionStatus": "AUTHENTICATED", "route": "#/vehicle-monitor/real-time",
+        }
+        self.assertEqual(self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "fresh-device-one"}).status_code, 200)
+        blocked = self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "fresh-device-two"})
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.json()["code"], "PLATFORM_ACCOUNT_DEVICE_CONFLICT")
+        self.assertEqual(DeviceRegistration.objects.filter(is_active=True).count(), 1)
+
+    def test_stale_same_user_device_without_actions_is_replaced(self):
+        self.client.force_login(self.operator)
+        payload = {
+            "extensionVersion": "0.6.0", "platformAccountRef": "platform-ref-keepalive",
+            "sessionStatus": "AUTHENTICATED", "route": "#/vehicle-monitor/real-time",
+        }
+        self.assertEqual(self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "stale-device-one"}).status_code, 200)
+        DeviceRegistration.objects.filter(device_id="stale-device-one").update(last_seen_at=timezone.now() - timedelta(minutes=3))
+        replaced = self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "replacement-device-two"})
+        self.assertEqual(replaced.status_code, 200)
+        self.assertFalse(DeviceRegistration.objects.get(device_id="stale-device-one").is_active)
+        self.assertTrue(DeviceRegistration.objects.get(device_id="replacement-device-two").is_active)
+        self.assertTrue(AuditEvent.objects.filter(event_type="STALE_DEVICE_REGISTRATION_REPLACED").exists())
+
+    def test_stale_device_with_unfinished_action_cannot_be_replaced(self):
+        self.client.force_login(self.operator)
+        payload = {
+            "extensionVersion": "0.6.0", "platformAccountRef": "platform-ref-keepalive",
+            "sessionStatus": "AUTHENTICATED", "route": "#/vehicle-monitor/real-time",
+        }
+        self.assertEqual(self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "busy-stale-device"}).status_code, 200)
+        DeviceRegistration.objects.filter(device_id="busy-stale-device").update(last_seen_at=timezone.now() - timedelta(minutes=3))
+        with patch("apps.reporting.models.ActionLease.objects.filter") as action_filter:
+            action_filter.return_value.exists.return_value = True
+            blocked = self.post_action_json(reverse("assistant-device-heartbeat-api"), {**payload, "deviceId": "blocked-replacement"})
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.json()["code"], "PLATFORM_ACCOUNT_DEVICE_CONFLICT")
+        self.assertTrue(DeviceRegistration.objects.get(device_id="busy-stale-device").is_active)
+
     def test_operator_explicitly_verifies_matching_realtime_platform_context(self):
         RoleAssignment.objects.filter(user=self.operator, is_active=True).update(is_active=False)
         assign_role(user=self.operator, role=RoleAssignment.Role.MONITOR_OPERATOR, assigned_by=self.admin)

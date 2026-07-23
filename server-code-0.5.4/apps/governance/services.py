@@ -255,7 +255,18 @@ def register_device_heartbeat(*, actor, device_id, extension_version, platform_a
         platform_account_ref=shift.platform_account_ref, is_active=True,
     ).exclude(device_id=device_id).first()
     if existing_account_device:
-        raise GovernanceError("同一省平台账号不能同时由多个设备使用", "PLATFORM_ACCOUNT_DEVICE_CONFLICT", 409)
+        stale_before = timezone.now() - timedelta(minutes=2)
+        if existing_account_device.user_id != actor.pk or existing_account_device.last_seen_at >= stale_before:
+            raise GovernanceError("同一省平台账号不能同时由多个设备使用", "PLATFORM_ACCOUNT_DEVICE_CONFLICT", 409)
+        from apps.reporting.models import ActionLease
+        if ActionLease.objects.filter(
+            device_id=existing_account_device.device_id,
+            status__in=[ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING],
+        ).exists():
+            raise GovernanceError("旧设备仍有未完成动作，禁止接管省平台账号", "PLATFORM_ACCOUNT_DEVICE_CONFLICT", 409)
+        stale_seconds = max(0, int((timezone.now() - existing_account_device.last_seen_at).total_seconds()))
+        existing_account_device.is_active = False
+        existing_account_device.save(update_fields=["is_active", "updated_at"])
     defaults = {
         "user": actor, "platform_account_ref": shift.platform_account_ref,
         "extension_version": str(extension_version or "")[:40], "session_status": str(session_status or "UNKNOWN")[:40],
@@ -278,6 +289,16 @@ def register_device_heartbeat(*, actor, device_id, extension_version, platform_a
         device.save()
     else:
         device = DeviceRegistration.objects.create(device_id=device_id, **defaults)
+    if existing_account_device:
+        AuditEvent.objects.create(
+            actor=actor,
+            event_type="STALE_DEVICE_REGISTRATION_REPLACED",
+            object_type="DEVICE_REGISTRATION",
+            object_id=device.device_id,
+            role_snapshot=active_roles(actor),
+            enterprise_scope_snapshot=enterprise_scope_for_user(actor),
+            detail={"platformAccountMatched": True, "staleSeconds": stale_seconds},
+        )
     return device
 
 
