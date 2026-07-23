@@ -125,6 +125,7 @@ test("真实语音只调用固定接口并按40毫秒PCM分片形成明确回执
     setTimeoutImpl: setTimeout,
     clearTimeoutImpl: clearTimeout,
     sleepImpl: async () => {},
+    rowReadyTimeoutMs: 10,
   });
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(result.bytesSent, 1280);
@@ -151,6 +152,7 @@ test("文本和终端TTS与平台已处理登记保持两个独立受控阶段",
     setTimeoutImpl: setTimeout,
     clearTimeoutImpl: clearTimeout,
     sleepImpl: async () => {},
+    rowReadyTimeoutMs: 10,
   };
   const result = await runtime.execute({
     operation: "TEXT",
@@ -214,6 +216,7 @@ test("非超速预警、错误页面和车辆行不匹配均在请求前阻断",
     setTimeoutImpl: setTimeout,
     clearTimeoutImpl: clearTimeout,
     sleepImpl: async () => {},
+    rowReadyTimeoutMs: 10,
   };
   const wrongAlarm = await runtime.execute({
     operation: "TEXT", actionId: "a", renderedText: runtime.SPEEDING_TEXT, authorization: "Bearer test-token",
@@ -323,4 +326,35 @@ test("动作运行异常只返回脱敏且有界的诊断信息", async () => {
   assert.match(result.errorMessage, /\[secret\]/);
   assert.doesNotMatch(result.errorMessage, /platform\.example|abcdefghijklmnopqrstuvwxyz123456|shortsecret/);
   assert.ok(result.errorMessage.length <= 160);
+});
+
+test("接口先于表格渲染时等待精确报警行出现", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const documentRef = platformDocument(event);
+  const originalQuery = documentRef.querySelectorAll.bind(documentRef);
+  let rowQueries = 0;
+  documentRef.querySelectorAll = (selector) => {
+    if (selector === "table tbody tr,tr.ve-table-body-tr" && ++rowQueries < 5) return [];
+    return originalQuery(selector);
+  };
+  const result = await runtime.execute({
+    operation: "TEXT",
+    actionId: "action:delayed-row",
+    renderedText: runtime.SPEEDING_TEXT,
+    authorization: "Bearer test-token",
+    event,
+    ruleAuthorization: ruleAuthorization(),
+  }, {
+    documentRef,
+    locationRef: { hash: "#/vehicle-monitor/real-time" },
+    fetchImpl: async () => response({ success: true, data: {} }),
+    AbortControllerImpl: AbortController,
+    setTimeoutImpl: setTimeout,
+    clearTimeoutImpl: clearTimeout,
+    sleepImpl: async () => {},
+    rowReadyTimeoutMs: 15000,
+  });
+  assert.equal(result.status, "SUCCEEDED");
+  assert.ok(rowQueries >= 5);
 });

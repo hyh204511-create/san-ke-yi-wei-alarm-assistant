@@ -117,10 +117,10 @@
     return false;
   }
 
-  async function prepareVehicle(documentRef, event, sleepImpl) {
+  async function prepareVehicle(documentRef, event, sleepImpl, rowReadyTimeoutMs = 15000) {
     const selectedTab = await selectAlarmTab(documentRef, event, sleepImpl);
     if (selectedTab.status !== "SUCCEEDED") return selectedTab;
-    const rowReady = await waitFor(() => Boolean(alarmRow(documentRef, event)), { timeoutMs: 5000, sleepImpl });
+    const rowReady = await waitFor(() => Boolean(alarmRow(documentRef, event)), { timeoutMs: rowReadyTimeoutMs, sleepImpl });
     if (!rowReady) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
     const row = alarmRow(documentRef, event);
     if (!row) return { status: "BLOCKED", errorCode: "ALARM_ROW_NOT_FOUND" };
@@ -374,6 +374,9 @@
         setTimeoutImpl: dependencies.setTimeoutImpl || setTimeout,
         clearTimeoutImpl: dependencies.clearTimeoutImpl || clearTimeout,
         sleepImpl: dependencies.sleepImpl || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+        rowReadyTimeoutMs: Number.isFinite(Number(dependencies.rowReadyTimeoutMs))
+          ? Math.max(10, Math.min(Number(dependencies.rowReadyTimeoutMs), 30000))
+          : 15000,
       };
       if (!/^#\/vehicle-monitor\/real-time(?:$|[/?])/i.test(context.locationRef.hash || "")) {
         return { status: "BLOCKED", errorCode: "PLATFORM_ROUTE_MISMATCH" };
@@ -384,7 +387,12 @@
         || !cleanText(request.ruleAuthorization.ruleSetVersion)) {
         return { status: "BLOCKED", errorCode: "EVENT_NOT_AUTHORIZED" };
       }
-      const prepared = await prepareVehicle(context.documentRef, request.event, context.sleepImpl);
+      const prepared = await prepareVehicle(
+        context.documentRef,
+        request.event,
+        context.sleepImpl,
+        context.rowReadyTimeoutMs
+      );
       if (prepared.status !== "SUCCEEDED") return prepared;
       if (request.operation === "VOICE") return executeVoice(request, context);
       if (request.operation === "TEXT") return executeText(request, context);
