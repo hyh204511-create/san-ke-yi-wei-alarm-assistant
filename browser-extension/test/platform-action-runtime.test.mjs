@@ -367,3 +367,27 @@ test("租约前报警行预检只切换页签并读取精确行", async () => {
   assert.equal(result.status, "SUCCEEDED");
   assert.equal(documentRef.row.clicked, 0);
 });
+
+test("页签切换后的旧报警行在表格刷新完成前不能通过预检", async () => {
+  const runtime = await loadRuntime();
+  const event = approvedEvent();
+  const documentRef = platformDocument(event);
+  const tabs = documentRef.querySelectorAll(".tabs .tab-item");
+  for (const tab of tabs) tab.active = !tab.textContent.startsWith("预警列表");
+  let rowsAvailable = true;
+  const originalQuery = documentRef.querySelectorAll.bind(documentRef);
+  documentRef.querySelectorAll = (selector) => {
+    if (selector === "table tbody tr,tr.ve-table-body-tr") return rowsAvailable ? [documentRef.row] : [];
+    return originalQuery(selector);
+  };
+  const sleeps = [];
+  const result = await runtime.checkAlarmRow(documentRef, event, async (milliseconds) => {
+    sleeps.push(milliseconds);
+    if (milliseconds === 300) rowsAvailable = false;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(milliseconds, 2)));
+  }, 10);
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.errorCode, "ALARM_ROW_NOT_FOUND");
+  assert.equal(sleeps.includes(300), true);
+  assert.equal(documentRef.row.clicked, 0);
+});

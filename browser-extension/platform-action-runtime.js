@@ -74,14 +74,18 @@
       .filter((node) => cleanText(node.textContent).startsWith(expected));
     if (candidates.length !== 1) return { status: "BLOCKED", errorCode: "ALARM_TAB_NOT_FOUND" };
     const tab = candidates[0];
-    if (!tab.classList?.contains("active")) tab.click();
+    const switched = !tab.classList?.contains("active");
+    if (switched) tab.click();
     const selected = await waitFor(
       () => tab.classList?.contains("active") === true,
       { timeoutMs: 3000, sleepImpl }
     );
-    return selected
-      ? { status: "SUCCEEDED" }
-      : { status: "BLOCKED", errorCode: "ALARM_TAB_MISMATCH" };
+    if (!selected) return { status: "BLOCKED", errorCode: "ALARM_TAB_MISMATCH" };
+    // The platform marks a tab active before its asynchronous table refresh
+    // finishes. Let the switched table settle so a stale row cannot pass the
+    // lease preflight and disappear as soon as the real action starts.
+    if (switched) await sleepImpl(300);
+    return { status: "SUCCEEDED" };
   }
 
   function hasActionButtons(root) {
