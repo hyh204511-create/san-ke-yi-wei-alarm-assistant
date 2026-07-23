@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 test("真实动作执行器保持在隔离内容脚本且只允许当前超速预警固定接口", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
+  const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   const runtime = await readFile(new URL("../platform-action-runtime.js", import.meta.url), "utf8");
   const pageHook = await readFile(new URL("../page-hook.js", import.meta.url), "utf8");
   const sandboxAdapter = await readFile(new URL("../sandbox-intercom.js", import.meta.url), "utf8");
@@ -13,6 +14,9 @@ test("真实动作执行器保持在隔离内容脚本且只允许当前超速�
   assert.doesNotMatch(worker, /chrome\.scripting\.executeScript/);
   assert.doesNotMatch(worker, /new WebSocket/);
   assert.match(worker, /ARM_SPEEDING_PREWARNING_TEST/);
+  assert.match(worker, /PLATFORM_REALTIME_NAVIGATE/);
+  assert.match(content, /值班值守监控/);
+  assert.match(content, /REALTIME_MONITOR_READY/);
   assert.match(worker, /testPromotion/);
   for (const receiptField of ["processingStatus", "voiceStatus", "textStatus", "fallbackUsed", "bytesSent", "durationMs"]) {
     assert.match(worker, new RegExp(`"${receiptField}"`));
@@ -208,6 +212,24 @@ test("插件只同步报表事实而不承载日报月报导出", async () => {
   assert.match(syncBody, /reports\/api\/events\/upsert/);
   assert.doesNotMatch(content, /生成日报|生成月报|导出XLSX|导出PDF/);
   assert.match(worker, /数据导出已迁移到独立报表中心/);
+});
+
+test("五来源任务只调用白名单取数接口且失败落入数据不完整", async () => {
+  const worker = await readFile(new URL("../service-worker.js", import.meta.url), "utf8");
+  const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
+  const runner = await readFile(new URL("../report-task-runner.js", import.meta.url), "utf8");
+  assert.match(worker, /executeClaimedReportTask/);
+  assert.match(worker, /\/incomplete/);
+  assert.match(content, /PLATFORM_REPORT_FETCH_PAGE/);
+  for (const endpoint of [
+    "alarmResponseRateCount", "alarmProcessingRateCount", "alarmInformationQueryReport",
+    "queryVehicleList", "network\/kpi\/mile", "alarmUserSet\/listAll",
+  ]) assert.match(content, new RegExp(endpoint));
+  const reportBlock = content.slice(content.indexOf("const REPORT_FETCH_ALLOWLIST"), content.indexOf("window.addEventListener(\"message\""));
+  assert.doesNotMatch(reportBlock, /sendRealAudio|sendCarMessage|positiveAlarm|查岗|申诉/);
+  assert.match(runner, /REPORT_RAW_FIELDS_CHANGED/);
+  assert.match(runner, /VEHICLE_STATUS_SCOPE_UNCONFIRMED/);
+  assert.match(runner, /ALARM_SCOPE_UNCONFIRMED/);
 });
 
 test("extension reload invalidation is caught and surfaced for recovery", async () => {

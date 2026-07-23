@@ -26,6 +26,7 @@ urlpatterns = [
     path("api/tasks/<uuid:task_id>/sources/<str:source_type>/pages", views.report_source_page_api, name="report-source-page-api"),
     path("api/tasks/<uuid:task_id>/sources/<str:source_type>/complete", views.report_source_complete_api, name="report-source-complete-api"),
     path("api/tasks/<uuid:task_id>/finalize", views.report_task_finalize_api, name="report-task-finalize-api"),
+    path("api/tasks/<uuid:task_id>/incomplete", views.report_task_incomplete_api, name="report-task-incomplete-api"),
     path("api/tasks/<uuid:task_id>/review", views.report_task_review_api, name="report-task-review-api"),
     path("api/tasks/<uuid:task_id>/exports", views.report_task_bundle_api, name="report-task-bundle-api"),
     path("api/task-snapshots/<uuid:report_id>/exports", views.report_snapshot_task_export_api, name="report-task-snapshot-export-api"),

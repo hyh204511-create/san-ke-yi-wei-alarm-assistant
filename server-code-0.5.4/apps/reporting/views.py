@@ -139,6 +139,7 @@ def task_data(task, *, detail=False, include_lease=False):
         data["sources"] = [{
             "sourceType": batch.source_type, "contractVersion": batch.contract_version,
             "queryHash": batch.query_hash, "fieldSignature": batch.field_signature or None,
+            "rawFieldSignature": batch.raw_field_signature or None,
             "status": batch.status, "totalPages": batch.total_pages, "totalRows": batch.total_rows,
             "receivedPages": batch.received_pages, "receivedRows": batch.received_rows,
         } for batch in task.source_batches.order_by("source_type")]
@@ -227,6 +228,7 @@ def report_source_page_api(request, task_id, source_type):
     page, created = report_tasks.upload_source_page(
         actor=request.user, task=task_for(task_id, request.user), source_type=source_type,
         page_number=data.get("pageNumber"), query_hash=data.get("queryHash"), field_signature=data.get("fieldSignature"),
+        raw_field_signature=data.get("rawFieldSignature"),
         rows=data.get("rows"), device_id=data.get("deviceId"), lease_token=data.get("leaseToken"),
     )
     return JsonResponse({"ok": True, "data": {"pageId": page.pk, "pageNumber": page.page_number, "rowCount": page.row_count, "created": created}}, status=201 if created else 200)
@@ -239,9 +241,10 @@ def report_source_complete_api(request, task_id, source_type):
     batch, problems = report_tasks.complete_source_batch(
         actor=request.user, task=task_for(task_id, request.user), source_type=source_type,
         total_pages=data.get("totalPages"), total_rows=data.get("totalRows"), field_signature=data.get("fieldSignature"),
+        raw_field_signature=data.get("rawFieldSignature"),
         device_id=data.get("deviceId"), lease_token=data.get("leaseToken"),
     )
-    return JsonResponse({"ok": not problems, "data": {"sourceType": batch.source_type, "status": batch.status, "problems": problems}}, status=409 if problems else 200, json_dumps_params={"ensure_ascii": False})
+    return JsonResponse({"ok": not problems, "code": "REPORT_SOURCE_INCOMPLETE" if problems else None, "message": "来源完整性校验失败" if problems else None, "data": {"sourceType": batch.source_type, "status": batch.status, "problems": problems}}, status=409 if problems else 200, json_dumps_params={"ensure_ascii": False})
 
 
 @require_http_methods(["POST"])
@@ -251,6 +254,19 @@ def report_task_finalize_api(request, task_id):
     task = task_for(task_id, request.user)
     report_tasks.verify_task_lease(task, request.user, data.get("deviceId"), data.get("leaseToken"))
     task = report_tasks.finalize_report_task(actor=request.user, task=task)
+    if task.status == ReportTask.Status.DATA_INCOMPLETE:
+        return JsonResponse({"ok": False, "code": task.failure_code, "message": task.failure_reason, "data": task_data(task, detail=True)}, status=409, json_dumps_params={"ensure_ascii": False})
+    return JsonResponse({"ok": True, "data": task_data(task, detail=True)}, json_dumps_params={"ensure_ascii": False})
+
+
+@require_http_methods(["POST"])
+@ingest_api_view
+def report_task_incomplete_api(request, task_id):
+    data = payload(request)
+    task = report_tasks.mark_report_task_incomplete(
+        actor=request.user, task=task_for(task_id, request.user), device_id=data.get("deviceId"),
+        lease_token=data.get("leaseToken"), failure_code=data.get("failureCode"),
+    )
     return JsonResponse({"ok": True, "data": task_data(task, detail=True)}, json_dumps_params={"ensure_ascii": False})
 
 

@@ -53,26 +53,31 @@ SOURCE_CONTRACTS = {
         "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
         "route": "#/report-center/alarm-disposal-rate", "method": "POST",
         "path": "/api/report-service/alarm/info/alarmResponseRateCount",
+        "fieldSignature": "0ba2b1c288c280113d6f57afde269e8120c0908c00093dd515f46cc4d9b01e25",
     },
     "ALARM_PROCESSING_RATE": {
         "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
         "route": "#/report-center/alarm-process-rate", "method": "POST",
         "path": "/api/report-service/alarm/info/alarmProcessingRateCount",
+        "fieldSignature": "daa89ae445ed2ba6466742d264f6627ff17baf2b2994121b2d4b6cb572e7d485",
     },
     "ALARM_CENTER": {
         "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
         "route": "#/report-center/alarm-info", "method": "POST",
         "path": "/api/report-service/alarm/info/alarmInformationQueryReport",
+        "fieldSignature": "e435140a0fef1f2024af8d689ed6315b193a0963337695de61c1ee9603864ef5",
     },
     "VEHICLE_BASE_INFO": {
         "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
         "route": "#/report-center/vehicle-mes", "method": "POST",
         "path": "/api/report-service/alarmDriverFaceResult/queryVehicleList",
+        "fieldSignature": "d1e5198031a7228e828eb0c98aad4f699aa6bd78648b1f6ba0f204b09e5f939f",
     },
     "TRACK_COMPLETENESS": {
         "enabled": True, "version": "HN_PLATFORM_2026_07_23_V1",
         "route": "#/network-monitor/examine-list", "method": "POST",
         "path": "/api/report-service/network/kpi/mile",
+        "fieldSignature": "d5bd6a9cebcb7bc198d45dda7839abb24baa97d1bd15880e9da1d9f6d085313d",
     },
 }
 
@@ -256,6 +261,37 @@ def verify_task_lease(task, actor, device_id, lease_token):
         raise ReportingError("报表任务租约已过期", "REPORT_TASK_LEASE_EXPIRED", 409)
 
 
+@transaction.atomic
+def mark_report_task_incomplete(*, actor, task, device_id, lease_token, failure_code):
+    require_reporting_permission(actor, "report.collect", require_shift=True)
+    task = ReportTask.objects.select_for_update().get(pk=task.pk)
+    verify_task_lease(task, actor, device_id, lease_token)
+    if task.status != ReportTask.Status.FETCHING:
+        raise ReportingError("只有取数中的任务可以上传分页", "INVALID_REPORT_TASK_STATUS", 409)
+    if task.status not in {ReportTask.Status.FETCHING, ReportTask.Status.VALIDATING}:
+        raise ReportingError("当前任务状态不能标记为数据不完整", "INVALID_REPORT_TASK_STATUS", 409)
+    code = re.sub(r"[^A-Z0-9_]", "", str(failure_code or "REPORT_COLLECTION_FAILED").upper())[:80]
+    safe_reasons = {
+        "REPORT_TOTAL_CHANGED": "分页期间平台总行数发生变化",
+        "REPORT_PAGE_SIZE_MISMATCH": "分页行数与冻结总数不一致",
+        "REPORT_EMPTY_RESULT_UNVERIFIED": "空结果无法证明原始字段契约",
+        "REPORT_RAW_FIELDS_CHANGED": "省平台原始字段与已审核契约不一致",
+        "REPORT_TASK_TIMEOUT": "报表任务超过受控执行时长",
+        "PLATFORM_REPORT_TIMEOUT": "省平台分页请求超时",
+        "ALARM_DICTIONARY_TIMEOUT": "报警类型字典请求超时",
+        "VEHICLE_STATUS_SCOPE_UNCONFIRMED": "车辆状态范围尚未完整确认",
+        "ALARM_SCOPE_UNCONFIRMED": "报警类型全选范围无法确认",
+    }
+    task.status = ReportTask.Status.DATA_INCOMPLETE
+    task.failure_code = code or "REPORT_COLLECTION_FAILED"
+    task.failure_reason = safe_reasons.get(task.failure_code, "省平台取数失败，已停止自动生成")
+    task.lease_token_hash = ""
+    task.lease_expires_at = None
+    task.save(update_fields=["status", "failure_code", "failure_reason", "lease_token_hash", "lease_expires_at", "updated_at"])
+    audit(actor, "REPORT_TASK_DATA_INCOMPLETE", "REPORT_TASK", task.public_id, {"failureCode": task.failure_code})
+    return task
+
+
 def validate_standard_rows(source_type, rows):
     if source_type not in SOURCE_TYPES or not isinstance(rows, list) or len(rows) > 5000:
         raise ReportingError("来源分页数据格式无效", "INVALID_REPORT_SOURCE_ROWS", 422)
@@ -274,12 +310,14 @@ def validate_standard_rows(source_type, rows):
 
 
 @transaction.atomic
-def upload_source_page(*, actor, task, source_type, page_number, query_hash, field_signature, rows, device_id, lease_token):
+def upload_source_page(*, actor, task, source_type, page_number, query_hash, field_signature, raw_field_signature, rows, device_id, lease_token):
     require_reporting_permission(actor, "report.collect", require_shift=True)
     reject_sensitive_keys(rows)
     validate_standard_rows(source_type, rows)
     task = ReportTask.objects.select_for_update().get(pk=task.pk)
     verify_task_lease(task, actor, device_id, lease_token)
+    if task.status != ReportTask.Status.FETCHING:
+        raise ReportingError("只有取数中的任务可以结束来源", "INVALID_REPORT_TASK_STATUS", 409)
     batch = ReportSourceBatch.objects.select_for_update().filter(task=task, source_type=source_type).first()
     if not batch or batch.query_hash != str(query_hash):
         raise ReportingError("请求条件哈希与冻结任务不一致", "REPORT_QUERY_HASH_MISMATCH", 409)
@@ -289,6 +327,9 @@ def upload_source_page(*, actor, task, source_type, page_number, query_hash, fie
     computed_signature = rows_field_signature(rows)
     if computed_signature != str(field_signature):
         raise ReportingError("字段签名与标准行不一致", "REPORT_FIELD_SIGNATURE_MISMATCH", 409)
+    expected_raw_signature = task.query_spec.get("contracts", {}).get(source_type, {}).get("fieldSignature")
+    if not expected_raw_signature or str(raw_field_signature) != expected_raw_signature:
+        raise ReportingError("原始字段签名与冻结契约不一致", "REPORT_RAW_FIELD_SIGNATURE_MISMATCH", 409)
     page_hash = sha256_json(rows)
     existing = ReportSourcePage.objects.filter(task=task, source_type=source_type, page_number=page_number, query_hash=query_hash).first()
     if existing:
@@ -298,7 +339,8 @@ def upload_source_page(*, actor, task, source_type, page_number, query_hash, fie
     try:
         page = ReportSourcePage.objects.create(
             task=task, batch=batch, source_type=source_type, page_number=page_number,
-            query_hash=query_hash, field_signature=field_signature, row_count=len(rows), page_hash=page_hash, rows=rows,
+            query_hash=query_hash, field_signature=field_signature, raw_field_signature=raw_field_signature,
+            row_count=len(rows), page_hash=page_hash, rows=rows,
         )
     except IntegrityError as exc:
         raise ReportingError("来源分页并发冲突", "REPORT_PAGE_IDEMPOTENCY_CONFLICT", 409) from exc
@@ -310,7 +352,7 @@ def upload_source_page(*, actor, task, source_type, page_number, query_hash, fie
 
 
 @transaction.atomic
-def complete_source_batch(*, actor, task, source_type, total_pages, total_rows, field_signature, device_id, lease_token):
+def complete_source_batch(*, actor, task, source_type, total_pages, total_rows, field_signature, raw_field_signature, device_id, lease_token):
     require_reporting_permission(actor, "report.collect", require_shift=True)
     task = ReportTask.objects.select_for_update().get(pk=task.pk)
     verify_task_lease(task, actor, device_id, lease_token)
@@ -326,6 +368,7 @@ def complete_source_batch(*, actor, task, source_type, total_pages, total_rows, 
     expected_pages = list(range(1, total_pages + 1))
     actual_pages = [page.page_number for page in pages]
     signatures = {page.field_signature for page in pages}
+    raw_signatures = {page.raw_field_signature for page in pages}
     problems = []
     if actual_pages != expected_pages:
         problems.append("分页不连续")
@@ -333,22 +376,23 @@ def complete_source_batch(*, actor, task, source_type, total_pages, total_rows, 
         problems.append("分页行数之和与平台总行数不一致")
     if signatures != {str(field_signature)}:
         problems.append("分页字段签名不一致")
+    expected_raw_signature = task.query_spec.get("contracts", {}).get(source_type, {}).get("fieldSignature")
+    if raw_signatures != {str(raw_field_signature)} or str(raw_field_signature) != expected_raw_signature:
+        problems.append("分页原始字段签名与冻结契约不一致")
     batch.total_pages = total_pages
     batch.total_rows = total_rows
     batch.field_signature = str(field_signature)
+    batch.raw_field_signature = str(raw_field_signature)
     batch.status = ReportSourceBatch.Status.INVALID if problems else ReportSourceBatch.Status.COMPLETE
     batch.completed_at = timezone.now()
-    batch.save(update_fields=["total_pages", "total_rows", "field_signature", "status", "completed_at", "updated_at"])
+    batch.save(update_fields=["total_pages", "total_rows", "field_signature", "raw_field_signature", "status", "completed_at", "updated_at"])
     if problems:
         task.status = ReportTask.Status.DATA_INCOMPLETE
         task.failure_code = "REPORT_SOURCE_INCOMPLETE"
         task.failure_reason = "；".join(problems)
-        task.save(update_fields=["status", "failure_code", "failure_reason", "updated_at"])
-    elif task.status == ReportTask.Status.DATA_INCOMPLETE and not task.source_batches.filter(status=ReportSourceBatch.Status.INVALID).exists():
-        task.status = ReportTask.Status.FETCHING
-        task.failure_code = ""
-        task.failure_reason = ""
-        task.save(update_fields=["status", "failure_code", "failure_reason", "updated_at"])
+        task.lease_token_hash = ""
+        task.lease_expires_at = None
+        task.save(update_fields=["status", "failure_code", "failure_reason", "lease_token_hash", "lease_expires_at", "updated_at"])
     return batch, problems
 
 
@@ -616,8 +660,11 @@ def finalize_report_task(*, actor, task):
         task.status = ReportTask.Status.DATA_INCOMPLETE
         task.failure_code = "REPORT_SOURCES_INCOMPLETE"
         task.failure_reason = "五来源任务存在未完成或无效来源"
-        task.save(update_fields=["status", "failure_code", "failure_reason", "updated_at"])
-        raise ReportingError(task.failure_reason, task.failure_code, 409)
+        task.lease_token_hash = ""
+        task.lease_expires_at = None
+        task.save(update_fields=["status", "failure_code", "failure_reason", "lease_token_hash", "lease_expires_at", "updated_at"])
+        audit(actor, "REPORT_TASK_DATA_INCOMPLETE", "REPORT_TASK", task.public_id, {"failureCode": task.failure_code})
+        return task
     task.status = ReportTask.Status.VALIDATING
     task.save(update_fields=["status", "updated_at"])
     task.snapshots.filter(status=ReportSnapshot.Status.DRAFT).delete()
@@ -641,7 +688,9 @@ def finalize_report_task(*, actor, task):
     task.validation_summary = summary
     task.failure_code = ""
     task.failure_reason = ""
-    task.save(update_fields=["status", "critical_issue_count", "validation_summary", "failure_code", "failure_reason", "updated_at"])
+    task.lease_token_hash = ""
+    task.lease_expires_at = None
+    task.save(update_fields=["status", "critical_issue_count", "validation_summary", "failure_code", "failure_reason", "lease_token_hash", "lease_expires_at", "updated_at"])
     audit(actor, "REPORT_TASK_VALIDATED", "REPORT_TASK", task.public_id, {"criticalIssueCount": critical, "snapshotCount": len(snapshots)})
     return task
 

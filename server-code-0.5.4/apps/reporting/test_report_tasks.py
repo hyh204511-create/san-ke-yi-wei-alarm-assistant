@@ -59,14 +59,15 @@ class FiveSourceReportTaskTests(TestCase):
     def upload(self, task, token, source, rows, *, page=1):
         batch = task.source_batches.get(source_type=source)
         signature = report_tasks.rows_field_signature(rows)
+        raw_signature = task.query_spec["contracts"][source]["fieldSignature"]
         report_tasks.upload_source_page(
             actor=self.collector, task=task, source_type=source, page_number=page,
-            query_hash=batch.query_hash, field_signature=signature, rows=rows,
+            query_hash=batch.query_hash, field_signature=signature, raw_field_signature=raw_signature, rows=rows,
             device_id="FIVE-SOURCE-WS", lease_token=token,
         )
         report_tasks.complete_source_batch(
             actor=self.collector, task=task, source_type=source, total_pages=1,
-            total_rows=len(rows), field_signature=signature,
+            total_rows=len(rows), field_signature=signature, raw_field_signature=raw_signature,
             device_id="FIVE-SOURCE-WS", lease_token=token,
         )
 
@@ -98,14 +99,15 @@ class FiveSourceReportTaskTests(TestCase):
         rows = [self.base("vehicle-001", "模拟车A01", "2026-07-21 08:00:00")]
         batch = task.source_batches.get(source_type="VEHICLE_BASE_INFO")
         signature = report_tasks.rows_field_signature(rows)
+        raw_signature = task.query_spec["contracts"]["VEHICLE_BASE_INFO"]["fieldSignature"]
         first, created = report_tasks.upload_source_page(
             actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=1,
-            query_hash=batch.query_hash, field_signature=signature, rows=rows,
+            query_hash=batch.query_hash, field_signature=signature, raw_field_signature=raw_signature, rows=rows,
             device_id="FIVE-SOURCE-WS", lease_token=token,
         )
         same, created_again = report_tasks.upload_source_page(
             actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=1,
-            query_hash=batch.query_hash, field_signature=signature, rows=rows,
+            query_hash=batch.query_hash, field_signature=signature, raw_field_signature=raw_signature, rows=rows,
             device_id="FIVE-SOURCE-WS", lease_token=token,
         )
         self.assertEqual(first.pk, same.pk)
@@ -115,18 +117,25 @@ class FiveSourceReportTaskTests(TestCase):
         with self.assertRaises(ReportingError) as caught:
             report_tasks.upload_source_page(
                 actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=1,
-                query_hash=batch.query_hash, field_signature=report_tasks.rows_field_signature(conflict), rows=conflict,
+                query_hash=batch.query_hash, field_signature=report_tasks.rows_field_signature(conflict), raw_field_signature=raw_signature, rows=conflict,
                 device_id="FIVE-SOURCE-WS", lease_token=token,
             )
         self.assertEqual(caught.exception.code, "REPORT_PAGE_IDEMPOTENCY_CONFLICT")
         with self.assertRaises(ReportingError) as sensitive:
             report_tasks.upload_source_page(
                 actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=2,
-                query_hash=batch.query_hash, field_signature="x" * 64,
+                query_hash=batch.query_hash, field_signature="x" * 64, raw_field_signature=raw_signature,
                 rows=[{**rows[0], "authorization": "Bearer forbidden"}],
                 device_id="FIVE-SOURCE-WS", lease_token=token,
             )
         self.assertEqual(sensitive.exception.code, "SENSITIVE_FIELD_REJECTED")
+        with self.assertRaises(ReportingError) as raw_mismatch:
+            report_tasks.upload_source_page(
+                actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=3,
+                query_hash=batch.query_hash, field_signature=signature, raw_field_signature="0" * 64, rows=rows,
+                device_id="FIVE-SOURCE-WS", lease_token=token,
+            )
+        self.assertEqual(raw_mismatch.exception.code, "REPORT_RAW_FIELD_SIGNATURE_MISMATCH")
         self.assertEqual(
             report_tasks.rows_field_signature(rows),
             report_tasks.rows_field_signature([rows[0], {**rows[0], "lastLocationTime": None}]),
@@ -138,14 +147,15 @@ class FiveSourceReportTaskTests(TestCase):
         rows = [self.base("vehicle-001", "模拟车A01", "2026-07-21 08:00:00")]
         batch = task.source_batches.get(source_type="VEHICLE_BASE_INFO")
         signature = report_tasks.rows_field_signature(rows)
+        raw_signature = task.query_spec["contracts"]["VEHICLE_BASE_INFO"]["fieldSignature"]
         report_tasks.upload_source_page(
             actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", page_number=2,
-            query_hash=batch.query_hash, field_signature=signature, rows=rows,
+            query_hash=batch.query_hash, field_signature=signature, raw_field_signature=raw_signature, rows=rows,
             device_id="FIVE-SOURCE-WS", lease_token=token,
         )
         batch, problems = report_tasks.complete_source_batch(
             actor=self.collector, task=task, source_type="VEHICLE_BASE_INFO", total_pages=2, total_rows=1,
-            field_signature=signature, device_id="FIVE-SOURCE-WS", lease_token=token,
+            field_signature=signature, raw_field_signature=raw_signature, device_id="FIVE-SOURCE-WS", lease_token=token,
         )
         self.assertEqual(batch.status, ReportSourceBatch.Status.INVALID)
         self.assertIn("分页不连续", problems)
@@ -238,3 +248,39 @@ class FiveSourceReportTaskTests(TestCase):
         self.assertEqual(workbook["处理率报表"]["K2"].value, "处理率")
         self.assertEqual(workbook["报警查询报表"]["C2"].value, "报警ID")
         workbook.close()
+
+    def test_collection_failure_marks_task_data_incomplete_with_audit_safe_code(self):
+        task = self.task()
+        token = self.arm(task)
+        task = report_tasks.mark_report_task_incomplete(
+            actor=self.collector, task=task, device_id="FIVE-SOURCE-WS", lease_token=token,
+            failure_code="platform-report-timeout<script>",
+        )
+        self.assertEqual(task.status, ReportTask.Status.DATA_INCOMPLETE)
+        self.assertEqual(task.failure_code, "PLATFORMREPORTTIMEOUTSCRIPT")
+        self.assertEqual(task.failure_reason, "省平台取数失败，已停止自动生成")
+        self.assertEqual(task.lease_token_hash, "")
+        self.assertIsNone(task.lease_expires_at)
+
+    def test_collection_failure_cannot_downgrade_review_state(self):
+        task = self.task()
+        token = self.arm(task)
+        task.status = ReportTask.Status.REVIEW_REQUIRED
+        task.save(update_fields=["status", "updated_at"])
+        with self.assertRaises(ReportingError) as caught:
+            report_tasks.mark_report_task_incomplete(
+                actor=self.collector, task=task, device_id="FIVE-SOURCE-WS", lease_token=token,
+                failure_code="REPORT_TOTAL_CHANGED",
+            )
+        self.assertEqual(caught.exception.code, "INVALID_REPORT_TASK_STATUS")
+        task.refresh_from_db()
+        self.assertEqual(task.status, ReportTask.Status.REVIEW_REQUIRED)
+
+    def test_finalize_incomplete_task_persists_terminal_state_and_clears_lease(self):
+        task = self.task()
+        self.arm(task)
+        task = report_tasks.finalize_report_task(actor=self.collector, task=task)
+        self.assertEqual(task.status, ReportTask.Status.DATA_INCOMPLETE)
+        self.assertEqual(task.failure_code, "REPORT_SOURCES_INCOMPLETE")
+        self.assertEqual(task.lease_token_hash, "")
+        self.assertIsNone(task.lease_expires_at)

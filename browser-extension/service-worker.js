@@ -19,7 +19,7 @@ import { executeSandboxText } from "./sandbox-text.js";
 import { executeWithRetry } from "./response-retry.js";
 import { executeVoiceThenTextFallback } from "./response-plan-execution.js";
 import { createPlatformAuthCache } from "./platform-auth-cache.js";
-import { pollReportTasks } from "./report-task-runner.js";
+import { executeClaimedReportTask, pollReportTasks } from "./report-task-runner.js";
 import {
   defaultPlatformSession,
   isHnPlatformUrl,
@@ -148,6 +148,7 @@ let assistantActionTokenCache = null;
 let assistantActionTokenKey = null;
 let assistantActionTokenCachedAt = 0;
 let dutyNotificationCache = { fetchedAt: 0, rows: [] };
+let reportExecutionPromise = null;
 
 function withStorage(task) {
   const next = storageQueue.then(task, task);
@@ -348,17 +349,109 @@ async function assistantGet(path) {
 }
 
 async function monitorReportTasks() {
+  if (reportExecutionPromise) return reportExecutionPromise;
+  reportExecutionPromise = (async () => {
   try {
     const identity = await getAssistantIdentity({ force: true });
     const result = await pollReportTasks({ assistantGet, identity });
-    await chrome.storage.local.set({ [REPORT_TASK_MONITOR_KEY]: { ...result, checkedAt: new Date().toISOString() } });
-  } catch (error) {
+    let execution = null;
+    if (result.tasks.length) execution = await executePendingReportTask(result.tasks[0], identity);
     await chrome.storage.local.set({
       [REPORT_TASK_MONITOR_KEY]: {
-        code: "REPORT_TASK_POLL_FAILED", tasks: [], blocked: [],
-        message: String(error?.message || error).slice(0, 300), checkedAt: new Date().toISOString(),
+        code: execution?.code || result.code,
+        taskCount: result.tasks.length,
+        taskId: execution?.taskId || result.tasks[0]?.taskId || null,
+        completed: execution?.completed || [],
+        blocked: result.blocked.slice(0, 10),
+        checkedAt: new Date().toISOString(),
       },
     });
+    return execution || result;
+  } catch (error) {
+    const failed = {
+      code: error?.code || "REPORT_TASK_POLL_FAILED", tasks: [], blocked: [],
+      checkedAt: new Date().toISOString(),
+    };
+    await chrome.storage.local.set({
+      [REPORT_TASK_MONITOR_KEY]: {
+        ...failed,
+      },
+    });
+    return failed;
+  }
+  })();
+  try { return await reportExecutionPromise; } finally { reportExecutionPromise = null; }
+}
+
+async function executePendingReportTask(taskSummary, identity) {
+  const tabs = await chrome.tabs.query({ url: ["https://*.hnznjg.cn:7443/*"] });
+  const tab = tabs.find((item) => item.active && isHnPlatformUrl(item.url)) || tabs.find((item) => isHnPlatformUrl(item.url));
+  if (!tab?.id) throw Object.assign(new Error("未找到已登录省平台标签页"), { code: "PLATFORM_TAB_REQUIRED" });
+  const deviceId = await getDeviceId();
+  const claim = await assistantMutation(`/reports/api/tasks/${encodeURIComponent(taskSummary.taskId)}/claim`, {
+    deviceId, durationSeconds: 1800,
+  }, identity);
+  const task = claim.data;
+  const leaseToken = task?.leaseToken;
+  if (!task?.taskId || !leaseToken) throw Object.assign(new Error("报表任务租约返回不完整"), { code: "REPORT_TASK_LEASE_INVALID" });
+
+  const authorization = async () => {
+    let token = platformAuthCache.get(tab.id, (await chrome.tabs.get(tab.id)).url);
+    const deadline = Date.now() + 8000;
+    while (!token && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      token = platformAuthCache.get(tab.id, (await chrome.tabs.get(tab.id)).url);
+    }
+    if (!token) throw Object.assign(new Error("未观察到当前省平台标签的短期认证上下文"), { code: "PLATFORM_TOKEN_MISSING" });
+    return token;
+  };
+  const pageMessage = async (message) => {
+    const response = await chrome.tabs.sendMessage(tab.id, message);
+    if (!response?.ok) throw Object.assign(new Error(response?.code || "省平台报表请求失败"), { code: response?.code || "PLATFORM_REPORT_FAILED" });
+    return response;
+  };
+  try {
+    return await executeClaimedReportTask({
+    task, deviceId, leaseToken,
+    navigateSource: async (sourceType) => pageMessage({
+      type: "PLATFORM_REPORT_NAVIGATE", sourceType,
+      context: {
+        periodStart: task.periodStart, periodEnd: task.periodEnd,
+        vehicleStatusCodes: task.querySpec?.conditions?.platformVehicleStatusCodes || [],
+      },
+    }),
+    fetchAlarmDictionary: async () => (await pageMessage({ type: "PLATFORM_ALARM_DICTIONARY_FETCH", authorization: await authorization() })).payload,
+    fetchPage: async (sourceType, body) => (await pageMessage({
+      type: "PLATFORM_REPORT_FETCH_PAGE", request: { sourceType, body, authorization: await authorization() },
+    })).payload,
+    uploadPage: async (body) => assistantMutation(
+      `/reports/api/tasks/${encodeURIComponent(task.taskId)}/sources/${encodeURIComponent(body.sourceType)}/pages`, body, identity,
+    ),
+    completeSource: async (sourceType, body) => assistantMutation(
+      `/reports/api/tasks/${encodeURIComponent(task.taskId)}/sources/${encodeURIComponent(sourceType)}/complete`, body, identity,
+    ),
+    finalizeTask: async (body) => assistantMutation(
+      `/reports/api/tasks/${encodeURIComponent(task.taskId)}/finalize`, body, identity,
+    ),
+    });
+  } catch (error) {
+    if (["REPORT_SOURCE_INCOMPLETE", "REPORT_SOURCES_INCOMPLETE"].includes(error?.code)) throw error;
+    try {
+      await assistantMutation(`/reports/api/tasks/${encodeURIComponent(task.taskId)}/incomplete`, {
+        deviceId, leaseToken,
+        failureCode: String(error?.code || "REPORT_COLLECTION_FAILED").slice(0, 80),
+      }, identity);
+    } catch (reportingError) {
+      await chrome.storage.local.set({
+        [REPORT_TASK_MONITOR_KEY]: {
+          code: "REPORT_INCOMPLETE_SYNC_FAILED", taskId: task.taskId,
+          failureCode: String(error?.code || "REPORT_COLLECTION_FAILED").slice(0, 80),
+          syncErrorCode: String(reportingError?.code || "ASSISTANT_MUTATION_FAILED").slice(0, 80),
+          checkedAt: new Date().toISOString(),
+        },
+      });
+    }
+    throw error;
   }
 }
 
@@ -468,9 +561,19 @@ async function livePlatformTab(senderTabId) {
       if (isHnPlatformUrl(tab.url) && new URL(tab.url).hash.split("?")[0] === "#/vehicle-monitor/real-time") return tab;
     } catch {}
   }
-  return chooseHnPlatformTab([
+  const existing = await chooseHnPlatformTab([
     { route: "#/vehicle-monitor/real-time", actionKey: "SPEEDING_SINGLE_TEST", mode: "LIVE_ACTION" },
   ]);
+  if (existing?.id) return existing;
+  const tabs = await chrome.tabs.query({ url: ["https://*.hnznjg.cn:7443/*"] });
+  const candidate = tabs.find((item) => item.active && isHnPlatformUrl(item.url)) || tabs.find((item) => isHnPlatformUrl(item.url));
+  if (!candidate?.id) return null;
+  try {
+    const result = await chrome.tabs.sendMessage(candidate.id, { type: "PLATFORM_REALTIME_NAVIGATE" });
+    if (!result?.ok) return null;
+    const updated = await chrome.tabs.get(candidate.id);
+    return isHnPlatformUrl(updated.url) && new URL(updated.url).hash.split("?")[0] === "#/vehicle-monitor/real-time" ? updated : null;
+  } catch { return null; }
 }
 
 async function executeLivePlatformAttempt(original, event, senderTabId) {

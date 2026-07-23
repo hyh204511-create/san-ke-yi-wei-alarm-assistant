@@ -9,8 +9,8 @@ export function runnableTaskSources(task, contracts = REPORT_SOURCE_CONTRACTS) {
   return sources.map((sourceType) => requireVerifiedReportContract(sourceType, contracts));
 }
 
-export function buildSourcePageUpload({ taskId, sourceType, pageNumber, queryHash, fieldSignature, rows, deviceId, leaseToken }) {
-  const payload = { sourceType, pageNumber, queryHash, fieldSignature, rows, deviceId, leaseToken };
+export function buildSourcePageUpload({ taskId, sourceType, pageNumber, queryHash, fieldSignature, rawFieldSignature, rows, deviceId, leaseToken }) {
+  const payload = { sourceType, pageNumber, queryHash, fieldSignature, rawFieldSignature, rows, deviceId, leaseToken };
   if (!taskId || !Number.isInteger(pageNumber) || pageNumber < 1 || !Array.isArray(rows)) {
     throw Object.assign(new Error("报表分页参数无效"), { code: "INVALID_REPORT_PAGE" });
   }
@@ -74,14 +74,15 @@ export function buildPlatformReportRequest({ task, sourceType, pageNumber, pageS
 }
 
 function validateRawRowFields(rawRows, contract) {
-  const expected = [...(contract.rawRowFields || [])].sort();
-  if (!expected.length) throw Object.assign(new Error("来源原始字段契约为空"), { code: "REPORT_CONTRACT_MISMATCH" });
+  const allowed = [...(contract.rawRowFields || [])].sort();
+  const required = [...(contract.requiredRawRowFields || contract.rawRowFields || [])].sort();
+  if (!allowed.length || !required.length) throw Object.assign(new Error("来源原始字段契约为空"), { code: "REPORT_CONTRACT_MISMATCH" });
   for (const row of rawRows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw Object.assign(new Error("来源原始行结构无效"), { code: "REPORT_CONTRACT_MISMATCH" });
     }
     const actual = Object.keys(row).filter((key) => !/^\d{6,30}$/.test(key)).sort();
-    if (stableJson(actual) !== stableJson(expected)) {
+    if (required.some((key) => !actual.includes(key)) || actual.some((key) => !allowed.includes(key))) {
       throw Object.assign(new Error("省平台原始字段与已审核契约不一致"), { code: "REPORT_RAW_FIELDS_CHANGED" });
     }
   }
@@ -128,7 +129,8 @@ export function parsePlatformReportPage(sourceType, payload, contract = REPORT_S
     throw Object.assign(new Error("省平台报表响应结构与已确认契约不一致"), { code: "REPORT_CONTRACT_MISMATCH" });
   }
   validateRawRowFields(rawRows, contract);
-  return { rows: standardizeReportRows(sourceType, rawRows, contract), rawRowCount: rawRows.length, total };
+  const rawFieldNames = rawRows.length ? [...contract.rawRowFields].sort() : [];
+  return { rows: standardizeReportRows(sourceType, rawRows, contract), rawRowCount: rawRows.length, rawFieldNames, total };
 }
 
 function shapeOfStandardValue(value) {
@@ -152,6 +154,110 @@ export async function standardRowsFieldSignature(rows) {
   const bytes = new TextEncoder().encode(stableJson(shapes));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, "0")).join("");
+}
+
+export async function rawFieldNamesSignature(fieldNames) {
+  const bytes = new TextEncoder().encode(JSON.stringify([...(fieldNames || [])].sort()));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, "0")).join("");
+}
+
+export function extractAlarmDictionaryIds(payload) {
+  if (!payload || !Array.isArray(payload.data)) {
+    throw Object.assign(new Error("报警类型字典响应结构不符合已审核契约"), { code: "ALARM_DICTIONARY_CONTRACT_MISMATCH" });
+  }
+  const candidates = payload.data.map((item) => {
+    const id = String(item?.alarmId ?? "").trim();
+    const name = String(item?.alarmName ?? "").trim();
+    if (!id || id.length > 160 || !name) {
+      throw Object.assign(new Error("报警类型字典存在无效项目"), { code: "ALARM_DICTIONARY_CONTRACT_MISMATCH" });
+    }
+    return id;
+  });
+  const unique = [...new Set(candidates)];
+  if (!unique.length || unique.length !== candidates.length) {
+    throw Object.assign(new Error("报警类型字典为空或存在重复代码"), { code: "ALARM_DICTIONARY_CONTRACT_MISMATCH" });
+  }
+  return unique;
+}
+
+export async function executeClaimedReportTask({
+  task, deviceId, leaseToken, navigateSource, fetchPage, fetchAlarmDictionary,
+  uploadPage, completeSource, finalizeTask, pageSize = 500,
+}) {
+  const startedAt = Date.now();
+  const maxDurationMs = 12 * 60 * 1000;
+  const maxPagesPerSource = 400;
+  const maxRowsPerSource = pageSize * maxPagesPerSource;
+  const sources = Array.isArray(task?.sources) ? task.sources : [];
+  const required = runnableTaskSources(task);
+  const sourceBatches = new Map(sources.map((item) => [item.sourceType, item]));
+  const statusCodes = task?.querySpec?.conditions?.platformVehicleStatusCodes || [];
+  let alarmIds = [];
+  if (required.some((contract) => contract.sourceType.startsWith("ALARM_"))) {
+    const dictionary = await fetchAlarmDictionary();
+    alarmIds = extractAlarmDictionaryIds(dictionary);
+    if (!alarmIds.length) throw Object.assign(new Error("报警类型字典为空，无法证明全选范围"), { code: "ALARM_SCOPE_UNCONFIRMED" });
+  }
+  const completed = [];
+  for (const contract of required) {
+    const batch = sourceBatches.get(contract.sourceType);
+    if (!batch?.queryHash) throw Object.assign(new Error("任务来源缺少冻结查询哈希"), { code: "REPORT_QUERY_HASH_MISSING" });
+    await navigateSource(contract.sourceType);
+    let pageNumber = 1;
+    let totalRows = null;
+    let totalPages = null;
+    let fieldSignature = null;
+    let rawFieldSignature = null;
+    do {
+      const body = buildPlatformReportRequest({
+        task, sourceType: contract.sourceType, pageNumber, pageSize, alarmIds,
+        vehicleStatusCodes: statusCodes,
+      });
+      const payload = await fetchPage(contract.sourceType, body);
+      const parsed = parsePlatformReportPage(contract.sourceType, payload, contract);
+      if (totalRows === null) {
+        totalRows = parsed.total;
+        if (totalRows < 1) throw Object.assign(new Error("空结果无法证明原始字段契约"), { code: "REPORT_EMPTY_RESULT_UNVERIFIED" });
+        if (totalRows > maxRowsPerSource) throw Object.assign(new Error("来源总行数超过已审核安全上限"), { code: "REPORT_TOTAL_LIMIT_EXCEEDED" });
+        totalPages = Math.ceil(totalRows / pageSize);
+      } else if (parsed.total !== totalRows) {
+        throw Object.assign(new Error("分页期间平台总行数发生变化"), { code: "REPORT_TOTAL_CHANGED" });
+      }
+      const expectedRows = pageNumber < totalPages ? pageSize : totalRows - pageSize * (totalPages - 1);
+      if (parsed.rawRowCount !== expectedRows) {
+        throw Object.assign(new Error("分页行数与冻结总数不一致"), { code: "REPORT_PAGE_SIZE_MISMATCH" });
+      }
+      const currentRawSignature = await rawFieldNamesSignature(parsed.rawFieldNames);
+      if (currentRawSignature !== contract.fieldSignature) {
+        throw Object.assign(new Error("平台原始字段签名与已审核契约不一致"), { code: "REPORT_RAW_FIELDS_CHANGED" });
+      }
+      if (rawFieldSignature && currentRawSignature !== rawFieldSignature) {
+        throw Object.assign(new Error("不同分页的原始字段签名不一致"), { code: "REPORT_RAW_FIELDS_CHANGED" });
+      }
+      rawFieldSignature = currentRawSignature;
+      const signature = await standardRowsFieldSignature(parsed.rows);
+      if (fieldSignature && signature !== fieldSignature) {
+        throw Object.assign(new Error("不同分页的标准字段签名不一致"), { code: "REPORT_FIELD_SIGNATURE_CHANGED" });
+      }
+      fieldSignature = signature;
+      totalRows = parsed.total;
+      await uploadPage(buildSourcePageUpload({
+        taskId: task.taskId, sourceType: contract.sourceType, pageNumber,
+        queryHash: batch.queryHash, fieldSignature, rawFieldSignature, rows: parsed.rows, deviceId, leaseToken,
+      }));
+      pageNumber += 1;
+      if (Date.now() - startedAt > maxDurationMs) {
+        throw Object.assign(new Error("报表任务超过受控执行时长"), { code: "REPORT_TASK_TIMEOUT" });
+      }
+    } while (pageNumber <= totalPages);
+    await completeSource(contract.sourceType, {
+      totalPages, totalRows, fieldSignature, rawFieldSignature, deviceId, leaseToken,
+    });
+    completed.push({ sourceType: contract.sourceType, totalPages, totalRows });
+  }
+  await finalizeTask({ deviceId, leaseToken });
+  return { code: "REPORT_TASK_REVIEW_REQUIRED", taskId: task.taskId, completed };
 }
 
 export async function pollReportTasks({ assistantGet, identity, contracts = REPORT_SOURCE_CONTRACTS }) {

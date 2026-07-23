@@ -11,6 +11,8 @@ import {
 import {
   buildPlatformReportRequest,
   buildSourcePageUpload,
+  executeClaimedReportTask,
+  extractAlarmDictionaryIds,
   parsePlatformReportPage,
   pollReportTasks,
   standardRowsFieldSignature,
@@ -155,7 +157,7 @@ test("报表导航只点击已确认菜单和轨迹页签，不点击查询或�
   const content = await readFile(new URL("../content.js", import.meta.url), "utf8");
   const navigation = content.slice(
     content.indexOf("const REPORT_NAVIGATION"),
-    content.indexOf("window.addEventListener(\"message\""),
+    content.indexOf("async function navigateRealtimeMonitor"),
   );
   for (const route of [
     "#/report-center/alarm-disposal-rate",
@@ -168,4 +170,64 @@ test("报表导航只点击已确认菜单和轨迹页签，不点击查询或�
   assert.match(navigation, /length !== 1/);
   assert.equal((navigation.match(/\.click\(\)/g) || []).length, 3);
   assert.doesNotMatch(navigation, /导出|语音对讲|文本下发|查岗|申诉/);
+});
+
+test("报警字典只接受固定data路径和alarmId/alarmName字段且拒绝重复", () => {
+  assert.deepEqual(extractAlarmDictionaryIds({ data: [{ alarmId: 1, alarmName: "超速" }, { alarmId: 2, alarmName: "疲劳" }] }), ["1", "2"]);
+  assert.throws(() => extractAlarmDictionaryIds({ rows: [{ id: 1, name: "普通对象" }] }), (error) => error.code === "ALARM_DICTIONARY_CONTRACT_MISMATCH");
+  assert.throws(() => extractAlarmDictionaryIds({ data: [{ alarmId: 1, alarmName: "超速" }, { alarmId: 1, alarmName: "重复" }] }), (error) => error.code === "ALARM_DICTIONARY_CONTRACT_MISMATCH");
+});
+
+test("分页总数漂移、短页和无法证明契约的空结果全部阻断", async () => {
+  const raw = Object.fromEntries(REPORT_SOURCE_CONTRACTS.VEHICLE_BASE_INFO.rawRowFields.map((field) => [field, null]));
+  Object.assign(raw, { carId: "v1", certId: "模拟车", groupId: "e1", groupName: "合成企业", vehicleStatus: "10" });
+  const task = {
+    taskId: "task-drift", periodStart: "2026-07-21", periodEnd: "2026-07-21",
+    requiredSourceTypes: ["VEHICLE_BASE_INFO"],
+    querySpec: { conditions: { platformVehicleStatusCodes: ["10", "confirmed-second"] } },
+    sources: [{ sourceType: "VEHICLE_BASE_INFO", queryHash: "query-hash" }],
+  };
+  const execute = (responses, pageSize = 2) => executeClaimedReportTask({
+    task, deviceId: "device", leaseToken: "lease", pageSize,
+    navigateSource: async () => {}, fetchAlarmDictionary: async () => ({}),
+    fetchPage: async () => responses.shift(), uploadPage: async () => {}, completeSource: async () => {}, finalizeTask: async () => {},
+  });
+  await assert.rejects(
+    execute([{ success: true, total: 3, data: [raw, { ...raw, carId: "v2" }] }, { success: true, total: 2, data: [] }]),
+    (error) => error.code === "REPORT_TOTAL_CHANGED",
+  );
+  await assert.rejects(
+    execute([{ success: true, total: 3, data: [raw] }]),
+    (error) => error.code === "REPORT_PAGE_SIZE_MISMATCH",
+  );
+  await assert.rejects(
+    execute([{ success: true, total: 0, data: [] }]),
+    (error) => error.code === "REPORT_EMPTY_RESULT_UNVERIFIED",
+  );
+});
+
+test("已领取任务按页上传、结束来源并最终提交审核", async () => {
+  const calls = [];
+  const task = {
+    taskId: "task-1", periodStart: "2026-07-21", periodEnd: "2026-07-21",
+    requiredSourceTypes: ["VEHICLE_BASE_INFO"],
+    querySpec: { conditions: { platformVehicleStatusCodes: ["10", "confirmed-second"] } },
+    sources: [{ sourceType: "VEHICLE_BASE_INFO", queryHash: "query-hash" }],
+  };
+  const raw = Object.fromEntries(REPORT_SOURCE_CONTRACTS.VEHICLE_BASE_INFO.rawRowFields.map((field) => [field, null]));
+  Object.assign(raw, { carId: "v1", certId: "模拟车", groupId: "e1", groupName: "合成企业", vehicleStatus: "10" });
+  const result = await executeClaimedReportTask({
+    task, deviceId: "device", leaseToken: "lease",
+    navigateSource: async (source) => calls.push(["navigate", source]),
+    fetchAlarmDictionary: async () => { throw new Error("车辆任务不应读取报警字典"); },
+    fetchPage: async (source, body) => { calls.push(["fetch", source, body.pageNum]); return { success: true, total: 1, data: [raw] }; },
+    uploadPage: async (body) => calls.push(["upload", body.sourceType, body.pageNumber, body.rows.length]),
+    completeSource: async (source, body) => calls.push(["complete", source, body.totalPages, body.totalRows]),
+    finalizeTask: async () => ({ status: "REVIEW_REQUIRED" }),
+  });
+  assert.equal(result.code, "REPORT_TASK_REVIEW_REQUIRED");
+  assert.deepEqual(calls, [
+    ["navigate", "VEHICLE_BASE_INFO"], ["fetch", "VEHICLE_BASE_INFO", 1],
+    ["upload", "VEHICLE_BASE_INFO", 1, 1], ["complete", "VEHICLE_BASE_INFO", 1, 1],
+  ]);
 });

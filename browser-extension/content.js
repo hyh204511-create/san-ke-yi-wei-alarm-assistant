@@ -167,9 +167,61 @@
     VEHICLE_BASE_INFO: { parent: "报表中心", leaf: "车辆基础信息", route: "#/report-center/vehicle-mes" },
     TRACK_COMPLETENESS: { parent: "联网联控", leaf: "考核明细", route: "#/network-monitor/examine-list", tab: "轨迹完整率明细" },
   });
+  const REPORT_FETCH_ALLOWLIST = Object.freeze({
+    ALARM_DISPOSAL_RATE: { route: "#/report-center/alarm-disposal-rate", path: "/api/report-service/alarm/info/alarmResponseRateCount" },
+    ALARM_PROCESSING_RATE: { route: "#/report-center/alarm-process-rate", path: "/api/report-service/alarm/info/alarmProcessingRateCount" },
+    ALARM_CENTER: { route: "#/report-center/alarm-info", path: "/api/report-service/alarm/info/alarmInformationQueryReport" },
+    VEHICLE_BASE_INFO: { route: "#/report-center/vehicle-mes", path: "/api/report-service/alarmDriverFaceResult/queryVehicleList" },
+    TRACK_COMPLETENESS: { route: "#/network-monitor/examine-list", path: "/api/report-service/network/kpi/mile" },
+  });
+  const REPORT_REQUEST_FIELDS = Object.freeze({
+    ALARM_DISPOSAL_RATE: ["alarmIds", "alarmQueryEndTime", "alarmQueryStartTime", "certId", "groupIdList", "latitudeSelection", "pageNum", "pageSize", "searchFlag", "timeType", "vehicleStatus"],
+    ALARM_PROCESSING_RATE: ["alarmIds", "alarmQueryEndTime", "alarmQueryStartTime", "certId", "groupIdList", "latitudeSelection", "pageNum", "pageSize", "searchFlag", "timeType", "vehicleStatus"],
+    ALARM_CENTER: ["alarmIds", "alarmQueryEndTime", "alarmQueryStartTime", "certId", "dispositionMode", "driverName", "groupIdList", "latitudeSelection", "manufactorId", "pageNum", "pageSize", "searchFlag", "timeType", "vehicleStatus"],
+    VEHICLE_BASE_INFO: ["certId", "groupId", "manufactorName", "pageNum", "pageSize", "vehicleStatus"],
+    TRACK_COMPLETENESS: ["areaCode", "carId", "companyId", "endTime", "kpiType", "linType", "pageNum", "pageSize", "startTime", "tt", "vehicleStatus"],
+  });
+  let activeReportContext = null;
+  let activeAlarmDictionaryIds = [];
+
+  function validReportRequest(sourceType, body) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+    const expected = REPORT_REQUEST_FIELDS[sourceType];
+    if (!expected || !activeReportContext || activeReportContext.sourceType !== sourceType || JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expected)) return false;
+    if (!Number.isInteger(body.pageNum) || body.pageNum < 1 || body.pageNum > 400 || body.pageSize !== 500) return false;
+    const statuses = [...new Set((body.vehicleStatus || []).map(String))].sort();
+    if (JSON.stringify(statuses) !== JSON.stringify(activeReportContext.vehicleStatusCodes)) return false;
+    if (sourceType.startsWith("ALARM_")) {
+      return body.searchFlag === "1" && body.latitudeSelection === "5" && body.timeType === "2"
+        && Array.isArray(body.groupIdList) && body.groupIdList.length === 0
+        && body.certId === "" && (body.driverName === undefined || body.driverName === "")
+        && (body.dispositionMode === undefined || body.dispositionMode === "")
+        && (body.manufactorId === undefined || body.manufactorId === "")
+        && JSON.stringify([...new Set((body.alarmIds || []).map(String))].sort()) === JSON.stringify(activeAlarmDictionaryIds)
+        && body.alarmQueryStartTime === `${activeReportContext.periodStart} 00:00:00`
+        && body.alarmQueryEndTime === `${activeReportContext.periodEnd} 23:59:59`;
+    }
+    if (sourceType === "VEHICLE_BASE_INFO") return Array.isArray(body.groupId) && body.groupId.length === 0 && body.certId === "" && body.manufactorName === "";
+    return body.kpiType === 4 && JSON.stringify(body.linType) === "[1,2,3,4]"
+      && body.tt === "" && body.areaCode === "" && body.companyId === "" && body.carId === ""
+      && body.startTime === activeReportContext.periodStart && body.endTime === activeReportContext.periodEnd;
+  }
+
+  function freezeReportContext(sourceType, context) {
+    const statuses = [...new Set((context?.vehicleStatusCodes || []).map(String))].sort();
+    const periodStart = String(context?.periodStart || "");
+    const periodEnd = String(context?.periodEnd || "");
+    if (statuses.length < 2 || !statuses.includes("10") || !/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) return false;
+    activeReportContext = Object.freeze({ sourceType, vehicleStatusCodes: statuses, periodStart, periodEnd });
+    return true;
+  }
 
   function exactVisibleText(text, selectors) {
-    const nodes = [...document.querySelectorAll(selectors)];
+    return exactVisibleTextWithin(document, text, selectors);
+  }
+
+  function exactVisibleTextWithin(root, text, selectors) {
+    const nodes = [...root.querySelectorAll(selectors)];
     return nodes.filter((node) => {
       const value = String(node.textContent || "").replace(/\s+/g, " ").trim();
       let current = node;
@@ -219,6 +271,86 @@
     return { ok: true, code: "REPORT_SOURCE_READY", sourceType, route: target.route };
   }
 
+  async function navigateRealtimeMonitor() {
+    const route = "#/vehicle-monitor/real-time";
+    if ((location.hash || "").split("?")[0] === route) return { ok: true, code: "REALTIME_MONITOR_READY", route };
+    const parentText = "值班值守监控";
+    const leafText = "实时监控";
+    const parents = exactVisibleText(parentText, ".el-submenu__title");
+    if (parents.length !== 1) return { ok: false, code: parents.length ? "REALTIME_PARENT_AMBIGUOUS" : "REALTIME_PARENT_NOT_FOUND" };
+    const submenu = parents[0].closest(".el-submenu");
+    if (!submenu) return { ok: false, code: "REALTIME_PARENT_CONTAINER_NOT_FOUND" };
+    let leaves = exactVisibleTextWithin(submenu, leafText, "li.el-menu-item,li[role='menuitem']");
+    if (leaves.length !== 1) {
+      parents[0].click();
+      await waitForReportState(() => exactVisibleTextWithin(submenu, leafText, "li.el-menu-item,li[role='menuitem']").length === 1, 3000);
+      leaves = exactVisibleTextWithin(submenu, leafText, "li.el-menu-item,li[role='menuitem']");
+    }
+    if (leaves.length !== 1) return { ok: false, code: leaves.length ? "REALTIME_LEAF_AMBIGUOUS" : "REALTIME_LEAF_NOT_FOUND" };
+    leaves[0].click();
+    const arrived = await waitForReportState(() => (location.hash || "").split("?")[0] === route);
+    return arrived
+      ? { ok: true, code: "REALTIME_MONITOR_READY", route }
+      : { ok: false, code: "REALTIME_ROUTE_TIMEOUT", route: (location.hash || "").split("?")[0] };
+  }
+
+  async function fetchPlatformReportPage(request) {
+    const allowed = REPORT_FETCH_ALLOWLIST[request?.sourceType];
+    if (!allowed) return { ok: false, code: "REPORT_SOURCE_UNKNOWN" };
+    if ((location.hash || "").split("?")[0] !== allowed.route) return { ok: false, code: "REPORT_ROUTE_MISMATCH" };
+    const authorization = String(request?.authorization || "").trim();
+    if (!/^Bearer \S{8,4080}$/.test(authorization)) return { ok: false, code: "PLATFORM_TOKEN_MISSING" };
+    if (!validReportRequest(request.sourceType, request.body)) return { ok: false, code: "REPORT_REQUEST_INVALID" };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(allowed.path, {
+        method: "POST", credentials: "include", cache: "no-store",
+        headers: { accept: "application/json", "content-type": "application/json", authorization },
+        body: JSON.stringify(request.body), signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload) return { ok: false, code: "PLATFORM_RESPONSE_UNKNOWN", platformHttpStatus: response.status };
+      if (!response.ok || payload.success === false) return { ok: false, code: "PLATFORM_REPORT_FAILED", platformHttpStatus: response.status };
+      return { ok: true, payload, platformHttpStatus: response.status };
+    } catch (error) {
+      return { ok: false, code: error?.name === "AbortError" ? "PLATFORM_REPORT_TIMEOUT" : "PLATFORM_REPORT_REQUEST_FAILED" };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function fetchPlatformAlarmDictionary(authorization) {
+    const token = String(authorization || "").trim();
+    if (!/^Bearer \S{8,4080}$/.test(token)) return { ok: false, code: "PLATFORM_TOKEN_MISSING" };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch("/api/alarm-service/alarmUserSet/listAll", {
+        method: "POST", credentials: "include", cache: "no-store",
+        headers: { accept: "application/json", "content-type": "application/json", authorization: token },
+        body: "{}", signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      const dictionaryIds = Array.isArray(payload?.data)
+        ? payload.data.map((item) => String(item?.alarmId ?? "").trim()).filter(Boolean)
+        : [];
+      if (!dictionaryIds.length || new Set(dictionaryIds).size !== dictionaryIds.length
+        || dictionaryIds.some((item) => item.length > 160 || !item)
+        || payload.data.some((item) => !String(item?.alarmName ?? "").trim())) {
+        return { ok: false, code: "ALARM_DICTIONARY_CONTRACT_MISMATCH" };
+      }
+      activeAlarmDictionaryIds = [...dictionaryIds].sort();
+      return response.ok && payload && payload.success !== false
+        ? { ok: true, payload }
+        : { ok: false, code: "ALARM_DICTIONARY_FAILED", platformHttpStatus: response.status };
+    } catch (error) {
+      return { ok: false, code: error?.name === "AbortError" ? "ALARM_DICTIONARY_TIMEOUT" : "ALARM_DICTIONARY_FAILED" };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   window.addEventListener("message", (event) => {
     if (event.source === window && event.origin === location.origin && event.data?.source === "hn-alarm-realtime-poll") {
       lastRealtimePollAt = event.data.polledAt || new Date().toISOString();
@@ -248,8 +380,29 @@
     }
     if (message?.type === "PLATFORM_REPORT_NAVIGATE") {
       navigateReportSource(message.sourceType)
-        .then(sendResponse)
+        .then((result) => {
+          if (result.ok && !freezeReportContext(message.sourceType, message.context)) return sendResponse({ ok: false, code: "REPORT_CONTEXT_INVALID" });
+          sendResponse(result);
+        })
         .catch(() => sendResponse({ ok: false, code: "REPORT_NAVIGATION_EXCEPTION" }));
+      return true;
+    }
+    if (message?.type === "PLATFORM_REALTIME_NAVIGATE") {
+      navigateRealtimeMonitor()
+        .then(sendResponse)
+        .catch(() => sendResponse({ ok: false, code: "REALTIME_NAVIGATION_EXCEPTION" }));
+      return true;
+    }
+    if (message?.type === "PLATFORM_REPORT_FETCH_PAGE") {
+      fetchPlatformReportPage(message.request)
+        .then(sendResponse)
+        .catch(() => sendResponse({ ok: false, code: "REPORT_FETCH_EXCEPTION" }));
+      return true;
+    }
+    if (message?.type === "PLATFORM_ALARM_DICTIONARY_FETCH") {
+      fetchPlatformAlarmDictionary(message.authorization)
+        .then(sendResponse)
+        .catch(() => sendResponse({ ok: false, code: "ALARM_DICTIONARY_FAILED" }));
       return true;
     }
     return false;
