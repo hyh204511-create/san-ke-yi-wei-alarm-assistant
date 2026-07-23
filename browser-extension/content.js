@@ -7,6 +7,7 @@
     "report-vehicle-base-discovery", "report-track-completeness-discovery"
   ]);
   const alarmViewHelpers = globalThis.HnAlarmView;
+  const platformIdentityHelpers = globalThis.HnPlatformIdentity;
   let dashboard = null;
   let selectedEventId = null;
   let popupObserver = null;
@@ -49,25 +50,8 @@
     }
   }
 
-  function visibleText(selector) {
-    try {
-      return String(document.querySelector(selector)?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 100);
-    } catch {
-      return "";
-    }
-  }
-
   function platformDisplayName() {
-    const selectors = [
-      ".user-name", ".username", ".userName", ".real-name", ".realName", ".account-name", ".accountName",
-      "[aria-label*='当前用户']", "[title*='当前用户']", "[class*='user-name']", "[class*='username']",
-      "[class*='account-name']", "[class*='realname']"
-    ];
-    for (const selector of selectors) {
-      const text = visibleText(selector);
-      if (text && text.length <= 100 && !/登录|退出|设置|首页|用户中心/.test(text)) return text;
-    }
-    return "";
+    return platformIdentityHelpers?.readDisplayName(document) || "";
   }
 
   function platformPermissionSummary(route) {
