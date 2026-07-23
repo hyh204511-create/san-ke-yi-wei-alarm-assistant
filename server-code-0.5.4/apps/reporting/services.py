@@ -279,6 +279,45 @@ def _lease_token_hash(token):
     return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
+def expire_stale_action_leases(*, now=None, action_scope_key=None):
+    now = now or timezone.now()
+    queryset = ActionLease.objects.filter(
+        status__in=[ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING],
+        expires_at__lte=now,
+    )
+    if action_scope_key:
+        queryset = queryset.filter(action_scope_key=action_scope_key)
+    lease_ids = list(queryset.values_list("pk", flat=True))
+    changed = 0
+    for lease_id in lease_ids:
+        with transaction.atomic():
+            locked = ActionLease.objects.select_for_update().select_related("fact__enterprise", "actor").get(pk=lease_id)
+            if locked.status not in {ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING} or locked.expires_at > now:
+                continue
+            locked.status = ActionLease.Status.UNKNOWN
+            locked.result_code = "UNKNOWN"
+            locked.result_payload = {"timeout": True, "expiredAt": now.isoformat()}
+            locked.finished_at = now
+            locked.last_attempt_at = now
+            locked.save(update_fields=[
+                "status", "result_code", "result_payload", "finished_at", "last_attempt_at", "updated_at",
+            ])
+            expired_fact = AlarmFact.objects.select_for_update().get(pk=locked.fact_id)
+            expired_fact.processing_status = AlarmFact.ProcessingStatus.UNKNOWN
+            expired_fact.processing_source = "SERVER_LEASE_TIMEOUT"
+            expired_fact.processing_marked_at = now
+            expired_fact.save(update_fields=[
+                "processing_status", "processing_source", "processing_marked_at", "updated_at",
+            ])
+            ensure_action_notification(
+                actor=locked.actor, fact=expired_fact, result_code="UNKNOWN",
+                action_type=locked.action_type, lease=locked,
+                detail={"timeout": True, "expiredAt": now.isoformat()},
+            )
+            changed += 1
+    return changed
+
+
 @transaction.atomic
 def acquire_action_lease(*, actor, fact, device_id, action_type, duration_seconds=120, require_registered_device=False):
     require_reporting_permission(actor, "action.execute", require_shift=True)
@@ -300,15 +339,13 @@ def acquire_action_lease(*, actor, fact, device_id, action_type, duration_second
     cooldown_seconds = max(60, min(int(getattr(settings, "ACTION_SCOPE_COOLDOWN_SECONDS", 60)), 86400))
     if not action_scope_key:
         raise ReportingError("缺少稳定车辆ID或报警类型，禁止自动下发并转人工", "ACTION_SCOPE_IDENTITY_REQUIRED", 409)
+    expire_stale_action_leases(now=now, action_scope_key=action_scope_key)
+    fact.refresh_from_db(fields=["processing_status", "processing_source", "processing_marked_at"])
     if fact.processing_status == AlarmFact.ProcessingStatus.PROCESSED:
         raise ReportingError("该报警已经完成自动处置，禁止重复下发", "ACTION_ALREADY_COMPLETED", 409)
     if fact.processing_status == AlarmFact.ProcessingStatus.UNKNOWN:
         raise ReportingError("该报警存在结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
     active_statuses = [ActionLease.Status.ACTIVE, ActionLease.Status.EXECUTING]
-    if ActionLease.objects.filter(fact=fact, status__in=active_statuses, expires_at__lte=now).exists():
-        # The periodic expiry command persists UNKNOWN and creates the duty notification.
-        # Until it runs, fail closed instead of issuing a second action lease.
-        raise ReportingError("该报警存在已超时且结果未知的动作，必须转人工核查", "ACTION_RESULT_UNKNOWN_MANUAL", 409)
     if ActionLease.objects.filter(fact=fact, status__in=active_statuses).exists():
         raise ReportingError("该报警已有设备取得处置计划租约", "ACTION_LEASE_CONFLICT", 409)
     if ActionLease.objects.filter(fact=fact, action_type="RESPONSE_PLAN", status=ActionLease.Status.COMPLETED).exists():

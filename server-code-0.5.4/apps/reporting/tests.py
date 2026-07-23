@@ -247,6 +247,43 @@ class ReportingFlowTests(TestCase):
             services.acquire_action_lease(actor=self.monitor, fact=fact, device_id="device-three", action_type="TEXT")
         self.assertEqual(caught_executing.exception.code, "ACTION_LEASE_CONFLICT")
 
+    def test_new_alarm_acquire_expires_stale_scope_lease_and_creates_notification(self):
+        self.client.force_login(self.monitor)
+        first_event = event_payload("alarm:id:9000000000000000094", alarm_name="超速驾驶")
+        second_event = event_payload("alarm:id:9000000000000000095", alarm_name="超速驾驶")
+        second_event["alarmId"] = "9000000000000000095"
+        second_event["alarmTime"] = "2026-07-23 03:03:00"
+        for event in [first_event, second_event]:
+            response = self.post_json(
+                reverse("report-event-upsert-api"),
+                {"event": event, "decision": decision_payload(), "action": {}},
+                action_token=True,
+            )
+            self.assertIn(response.status_code, {200, 201})
+        first_fact = AlarmFact.objects.get(event_id=first_event["eventId"])
+        second_fact = AlarmFact.objects.get(event_id=second_event["eventId"])
+        stale = services.acquire_action_lease(
+            actor=self.monitor, fact=first_fact, device_id="stale-scope-device", action_type="RESPONSE_PLAN",
+        )
+        ActionLease.objects.filter(pk=stale.pk).update(
+            created_at=timezone.now() - timedelta(seconds=181),
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+
+        replacement = services.acquire_action_lease(
+            actor=self.monitor, fact=second_fact, device_id="replacement-scope-device", action_type="RESPONSE_PLAN",
+        )
+
+        stale.refresh_from_db()
+        first_fact.refresh_from_db()
+        self.assertEqual(stale.status, ActionLease.Status.UNKNOWN)
+        self.assertEqual(stale.result_code, "UNKNOWN")
+        self.assertEqual(stale.result_payload.get("timeout"), True)
+        self.assertEqual(first_fact.processing_status, AlarmFact.ProcessingStatus.UNKNOWN)
+        self.assertEqual(first_fact.processing_source, "SERVER_LEASE_TIMEOUT")
+        self.assertEqual(replacement.status, ActionLease.Status.ACTIVE)
+        self.assertTrue(DutyNotification.objects.filter(action_lease=stale, result_code="UNKNOWN").exists())
+
     def test_completed_plan_and_unknown_action_both_block_automatic_replay(self):
         self.ingest()
         fact = AlarmFact.objects.get()
