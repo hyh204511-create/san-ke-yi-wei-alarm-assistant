@@ -1,14 +1,90 @@
 from datetime import timedelta
+import base64
 import json
+import os
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.core.exceptions import ImproperlyConfigured
+from django.core import serializers
+from django.db import connection
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from . import services
+from .encrypted_fields import decrypt_json, encrypt_json
 from .models import AssistantProfile, AuditEvent, DeviceRegistration, DutyShift, EnterpriseGrant, EnterpriseScope, RoleAssignment, SessionKeepaliveAudit, SessionKeepalivePolicy, VoiceInteractionPolicy
 from .services import GovernanceError, assign_role, claim_shift, release_shift
+from config.settings import postgresql_database_config
+from .management.commands.audit_database_migration import migration_models
+
+
+class EncryptedFieldKeyRotationTests(TestCase):
+    @staticmethod
+    def encoded_key(fill):
+        return base64.urlsafe_b64encode(bytes([fill]) * 32).decode("ascii").rstrip("=")
+
+    @override_settings(ALLOW_DERIVED_DATA_KEYS=False)
+    def test_fallback_key_decrypts_legacy_value_and_primary_encrypts_new_value(self):
+        old_key = self.encoded_key(1)
+        new_key = self.encoded_key(2)
+        with patch.dict(os.environ, {"SENSITIVE_DATA_KEY": old_key, "SENSITIVE_DATA_KEY_FALLBACKS": ""}, clear=False):
+            legacy = encrypt_json({"status": "legacy"})
+        with patch.dict(os.environ, {"SENSITIVE_DATA_KEY": new_key, "SENSITIVE_DATA_KEY_FALLBACKS": old_key}, clear=False):
+            self.assertEqual(decrypt_json(legacy), {"status": "legacy"})
+            current = encrypt_json({"status": "current"})
+        with patch.dict(os.environ, {"SENSITIVE_DATA_KEY": new_key, "SENSITIVE_DATA_KEY_FALLBACKS": ""}, clear=False):
+            self.assertEqual(decrypt_json(current), {"status": "current"})
+
+    @override_settings(ALLOW_DERIVED_DATA_KEYS=False)
+    def test_invalid_fallback_key_is_rejected(self):
+        with patch.dict(os.environ, {"SENSITIVE_DATA_KEY": self.encoded_key(3), "SENSITIVE_DATA_KEY_FALLBACKS": "invalid"}, clear=False):
+            with self.assertRaisesMessage(ImproperlyConfigured, "SENSITIVE_DATA_KEY_FALLBACKS item 1"):
+                encrypt_json({"status": "blocked"})
+
+    def test_fixture_serialization_uses_valid_json(self):
+        field = DeviceRegistration._meta.get_field("platform_permission_summary")
+        serialized = field.value_to_string(SimpleNamespace(platform_permission_summary={"hasQuery": True, "labels": ["实时报警"]}))
+        self.assertEqual(json.loads(serialized), {"hasQuery": True, "labels": ["实时报警"]})
+
+    def test_django_serializer_round_trip_preserves_sensitive_json_types(self):
+        user = get_user_model().objects.create_user(username="fixture-user")
+        values = {"enabled": True, "count": 2, "items": ["报警", None], "nested": {"ratio": 0.5}}
+        device = DeviceRegistration.objects.create(
+            device_id="fixture-device", user=user, platform_permission_summary=values,
+        )
+        fixture = serializers.serialize("json", [device])
+        self.assertNotIn("enc:v1:", fixture)
+        restored = next(serializers.deserialize("json", fixture)).object
+        self.assertEqual(restored.platform_permission_summary, values)
+        device.delete()
+        restored.save()
+        self.assertEqual(DeviceRegistration.objects.get(pk=restored.pk).platform_permission_summary, values)
+        table = connection.ops.quote_name(DeviceRegistration._meta.db_table)
+        column = connection.ops.quote_name("platform_permission_summary")
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT {column} FROM {table} WHERE id = %s", [restored.pk])
+            self.assertTrue(cursor.fetchone()[0].startswith("enc:v1:"))
+
+    def test_postgresql_url_decodes_encoded_credentials_and_database_name(self):
+        config = postgresql_database_config(
+            "postgresql://assistant%40user:p%40ss%3Aword@localhost/assistant%2Ddb",
+            debug=True,
+        )
+        self.assertEqual(config["USER"], "assistant@user")
+        self.assertEqual(config["PASSWORD"], "p@ss:word")
+        self.assertEqual(config["NAME"], "assistant-db")
+
+    def test_migration_audit_scope_excludes_recreated_system_models(self):
+        labels = {model._meta.label_lower for model in migration_models()}
+        self.assertIn("auth.user", labels)
+        self.assertIn("governance.deviceregistration", labels)
+        self.assertNotIn("auth.permission", labels)
+        self.assertNotIn("auth.group", labels)
+        self.assertNotIn("contenttypes.contenttype", labels)
+        self.assertNotIn("sessions.session", labels)
 
 
 class GovernanceTests(TestCase):
@@ -19,6 +95,15 @@ class GovernanceTests(TestCase):
         AssistantProfile.objects.create(user=self.admin, display_name="测试管理员", employee_code="EMP-ADMIN")
         self.enterprise = EnterpriseScope.objects.create(code="ENT-001", name="测试运输企业", scope_type=EnterpriseScope.ScopeType.ENTERPRISE)
         EnterpriseGrant.objects.create(user=self.user, enterprise=self.enterprise)
+
+    def test_ready_rejects_sqlite_without_exposing_connection_details(self):
+        response = self.client.get("/ready")
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["code"], "POSTGRESQL_REQUIRED")
+        serialized = json.dumps(payload).lower()
+        for secret_name in ("password", "user", "host", "database_url"):
+            self.assertNotIn(secret_name, serialized)
 
     def test_unit_user_cannot_also_be_rule_reviewer(self):
         assign_role(user=self.user, role=RoleAssignment.Role.UNIT_USER, assigned_by=self.admin)

@@ -12,19 +12,37 @@ from django.db import models
 PREFIX = "enc:v1:"
 
 
-def sensitive_data_key():
+def _decode_key(encoded, setting_name):
+    try:
+        key = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    except (ValueError, TypeError) as exc:
+        raise ImproperlyConfigured(f"{setting_name} must be URL-safe base64") from exc
+    if len(key) != 32:
+        raise ImproperlyConfigured(f"{setting_name} must decode to exactly 32 bytes")
+    return key
+
+
+def sensitive_data_keys():
     encoded = os.environ.get("SENSITIVE_DATA_KEY", "").strip()
     if encoded:
-        try:
-            key = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
-        except ValueError as exc:
-            raise ImproperlyConfigured("SENSITIVE_DATA_KEY must be URL-safe base64") from exc
-        if len(key) != 32:
-            raise ImproperlyConfigured("SENSITIVE_DATA_KEY must decode to exactly 32 bytes")
-        return key
-    if settings.ALLOW_DERIVED_DATA_KEYS:
-        return hashlib.sha256((settings.SECRET_KEY + ":local-sensitive-data").encode("utf-8")).digest()
-    raise ImproperlyConfigured("SENSITIVE_DATA_KEY is required when derived data keys are disabled")
+        primary = _decode_key(encoded, "SENSITIVE_DATA_KEY")
+    elif settings.ALLOW_DERIVED_DATA_KEYS:
+        primary = hashlib.sha256((settings.SECRET_KEY + ":local-sensitive-data").encode("utf-8")).digest()
+    else:
+        raise ImproperlyConfigured("SENSITIVE_DATA_KEY is required when derived data keys are disabled")
+    keys = [primary]
+    for index, fallback in enumerate(os.environ.get("SENSITIVE_DATA_KEY_FALLBACKS", "").split(","), start=1):
+        fallback = fallback.strip()
+        if not fallback:
+            continue
+        key = _decode_key(fallback, f"SENSITIVE_DATA_KEY_FALLBACKS item {index}")
+        if key not in keys:
+            keys.append(key)
+    return tuple(keys)
+
+
+def sensitive_data_key():
+    return sensitive_data_keys()[0]
 
 
 def encrypt_json(value):
@@ -47,10 +65,16 @@ def decrypt_json(value):
             raise ValidationError("Legacy sensitive JSON value is invalid") from exc
     try:
         packed = base64.urlsafe_b64decode(text[len(PREFIX):])
-        raw = AESGCM(sensitive_data_key()).decrypt(packed[:12], packed[12:], b"assistant-sensitive-json-v1")
-        return json.loads(raw.decode("utf-8"))
     except Exception as exc:
         raise ValidationError("Sensitive JSON integrity verification failed") from exc
+    last_error = None
+    for key in sensitive_data_keys():
+        try:
+            raw = AESGCM(key).decrypt(packed[:12], packed[12:], b"assistant-sensitive-json-v1")
+            return json.loads(raw.decode("utf-8"))
+        except Exception as exc:
+            last_error = exc
+    raise ValidationError("Sensitive JSON integrity verification failed") from last_error
 
 
 class EncryptedJSONField(models.TextField):
@@ -66,6 +90,10 @@ class EncryptedJSONField(models.TextField):
         if value is None or isinstance(value, (dict, list, int, float, bool)):
             return value
         return decrypt_json(value)
+
+    def value_to_string(self, obj):
+        value = self.value_from_object(obj)
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
     def get_prep_value(self, value):
         value = super().get_prep_value(value)

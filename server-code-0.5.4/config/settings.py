@@ -1,7 +1,7 @@
 import base64
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("ASSISTANT_SECRET_KEY", "local-assistant-only-not-for-production")
@@ -32,9 +32,23 @@ def _validate_production_key(name):
         raise RuntimeError(f"Production {name} must decode to exactly 32 bytes")
 
 
+def _validate_optional_key_list(name):
+    for index, encoded in enumerate(os.environ.get(name, "").split(","), start=1):
+        encoded = encoded.strip()
+        if not encoded:
+            continue
+        try:
+            decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        except (ValueError, TypeError) as exc:
+            raise RuntimeError(f"Production {name} item {index} must be URL-safe base64") from exc
+        if len(decoded) != 32:
+            raise RuntimeError(f"Production {name} item {index} must decode to exactly 32 bytes")
+
+
 if not DEBUG:
     _validate_production_key("SENSITIVE_DATA_KEY")
     _validate_production_key("EVIDENCE_MASTER_KEY")
+    _validate_optional_key_list("SENSITIVE_DATA_KEY_FALLBACKS")
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -72,31 +86,39 @@ TEMPLATES = [{
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-if DATABASE_URL:
-    parsed_database = urlparse(DATABASE_URL)
+def postgresql_database_config(database_url, *, debug, sslmode="", conn_max_age=60, connect_timeout=5):
+    parsed_database = urlparse(database_url)
     if parsed_database.scheme not in {"postgres", "postgresql"}:
         raise RuntimeError("DATABASE_URL must use postgres:// or postgresql://")
-    database_sslmode = os.environ.get("DATABASE_SSLMODE", "").strip().lower()
-    if not DEBUG and database_sslmode not in {"require", "verify-ca", "verify-full"}:
+    sslmode = sslmode.strip().lower()
+    if not debug and sslmode not in {"require", "verify-ca", "verify-full"}:
         raise RuntimeError("Production DATABASE_SSLMODE must be require, verify-ca, or verify-full")
-    DATABASES = {"default": {
+    return {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": parsed_database.path.lstrip("/"),
-        "USER": parsed_database.username or "",
-        "PASSWORD": parsed_database.password or "",
+        "NAME": unquote(parsed_database.path.lstrip("/")),
+        "USER": unquote(parsed_database.username or ""),
+        "PASSWORD": unquote(parsed_database.password or ""),
         "HOST": parsed_database.hostname or "localhost",
         "PORT": str(parsed_database.port or 5432),
-        "CONN_MAX_AGE": int(os.environ.get("DATABASE_CONN_MAX_AGE", "60")),
+        "CONN_MAX_AGE": int(conn_max_age),
         "OPTIONS": {
-            "connect_timeout": int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "5")),
-            **({"sslmode": database_sslmode} if database_sslmode else {}),
+            "connect_timeout": int(connect_timeout),
+            **({"sslmode": sslmode} if sslmode else {}),
         },
-    }}
-elif not DEBUG:
-    raise RuntimeError("Production mode requires DATABASE_URL for PostgreSQL")
+    }
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if DATABASE_URL:
+    DATABASES = {"default": postgresql_database_config(
+        DATABASE_URL,
+        debug=DEBUG,
+        sslmode=os.environ.get("DATABASE_SSLMODE", ""),
+        conn_max_age=os.environ.get("DATABASE_CONN_MAX_AGE", "60"),
+        connect_timeout=os.environ.get("DATABASE_CONNECT_TIMEOUT", "5"),
+    )}
 else:
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "assistant.sqlite3"}}
+    raise RuntimeError("DATABASE_URL is required; use config.settings_test only for automated SQLite tests")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

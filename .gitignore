@@ -12,6 +12,7 @@
 !.env.example
 *.local.json
 node_modules/
+.venv/
 coverage/
 __pycache__/
 *.py[cod]

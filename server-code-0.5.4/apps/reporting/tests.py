@@ -208,6 +208,31 @@ class ReportingFlowTests(TestCase):
         self.assertEqual(AlarmFact.objects.count(), 1)
         self.assertEqual(CaptureSource.objects.count(), 50)
 
+    def test_one_response_capture_can_prove_multiple_alarm_facts(self):
+        self.client.force_login(self.monitor)
+        source = {
+            "captureId": "shared-response-capture", "deviceId": "REPORT-WS",
+            "platformAccountRef": "report-platform", "extensionVersion": "0.6.0",
+            "endpoint": "/api/alarm-service/alarm/center/query", "capturedAt": "2026-07-19T12:10:06+08:00",
+        }
+        first = self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": event_payload(), "decision": decision_payload(), "action": {}, "source": source},
+            action_token=True,
+        )
+        second_event = event_payload("alarm:id:9000000000000000002", alarm_name="抽烟报警")
+        second_event["vehicleId"] = "vehicle-002"
+        second_event["vehicleNo"] = "湘A测002"
+        second = self.post_json(
+            reverse("report-event-upsert-api"),
+            {"event": second_event, "decision": decision_payload(), "action": {}, "source": source},
+            action_token=True,
+        )
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(AlarmFact.objects.count(), 2)
+        self.assertEqual(CaptureSource.objects.count(), 2)
+
     def test_only_one_active_plan_lease_per_alarm_across_all_channels(self):
         self.ingest()
         fact = AlarmFact.objects.get()

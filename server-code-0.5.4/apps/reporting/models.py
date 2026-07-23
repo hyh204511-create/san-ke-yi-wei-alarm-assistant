@@ -66,7 +66,7 @@ class CaptureSource(models.Model):
 
     class Meta:
         db_table = "assistant_alarm_capture_sources"
-        constraints = [models.UniqueConstraint(fields=["device_id", "capture_id"], name="unique_device_capture")]
+        constraints = [models.UniqueConstraint(fields=["fact", "device_id", "capture_id"], name="unique_fact_device_capture")]
         indexes = [
             models.Index(fields=["fact", "-captured_at"], name="alarm_capture_fact_time_idx"),
             models.Index(fields=["device_id", "-captured_at"], name="alarm_capture_device_time_idx"),

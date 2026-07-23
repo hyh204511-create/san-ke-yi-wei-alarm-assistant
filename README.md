@@ -36,23 +36,25 @@ curl http://127.0.0.1:17321/health
 4. 选择仓库中的 `browser-extension/`；
 5. 刷新已经授权登录的省平台页面。
 
-本地沙箱联调：
+本地实名助手使用 PostgreSQL：
 
 ```powershell
-cd sandbox
-python manage.py migrate
-python manage.py runserver 127.0.0.1:18080
+cd server-code-0.5.4
+powershell -ExecutionPolicy Bypass -File deploy/windows/start-assistant-postgresql.ps1
 ```
+
+启动脚本从当前 Windows 用户环境读取 `DATABASE_URL`、应用密钥和数据加密密钥，执行 Django 迁移后使用 Waitress 监听 `127.0.0.1:18080`。不得把数据库密码或密钥写入仓库。
 
 首次打开 `http://127.0.0.1:18080/assistant/setup`，在仅限本机开放的初始化页创建系统管理员。随后进入“身份与企业管理”，创建监控、处置复核、规则配置、规则审核、报表和安全审计人员，并分配企业范围。监控、规则配置和规则审核账号由服务端强制互斥。
 
-打开 `http://127.0.0.1:18080/`。详细步骤见 [沙箱运行说明](sandbox/README.md)。
+打开 `http://127.0.0.1:18080/assistant/`。服务端说明见 [`server-code-0.5.4/README.md`](server-code-0.5.4/README.md)。
 
 ## 目录
 
 ```text
 browser-extension/  可运行扩展、本机采集服务和测试
-sandbox/            Django契约模拟接口、高仿测试页面和异常场景
+server-code-0.5.4/  Django实名助手、PostgreSQL迁移和Windows/Linux部署入口
+sandbox/            历史开发副本，不作为当前运行入口
 docs/               产品、工程、决策、研究、交接和交付文档
 prototypes/         当前原型、汇报页和历史原型
 private/            本地客户证据和历史原始资料，不进入 Git

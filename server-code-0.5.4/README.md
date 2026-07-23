@@ -8,17 +8,21 @@
 
 ```powershell
 cd server-code-0.5.4
-python -m pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 127.0.0.1:18080
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File deploy/windows/start-assistant-postgresql.ps1
 ```
 
-本地开发未设置 `DATABASE_URL` 时使用 `assistant.sqlite3`。正式环境必须设置 `ASSISTANT_DEBUG=0`、独立的 `ASSISTANT_SECRET_KEY`、PostgreSQL `DATABASE_URL`、允许域名、CSRF 来源以及独立的数据加密密钥；正式环境使用 Gunicorn 或 Waitress，不使用 `manage.py runserver`。
+本机实际运行和正式环境统一使用 PostgreSQL。Windows 本机启动脚本为 `deploy/windows/start-assistant-postgresql.ps1`，它从当前 Windows 用户环境读取数据库连接和密钥、执行迁移，再使用 Waitress 监听 `127.0.0.1:18080`。SQLite 仅保留为迁移前备份和自动化测试兼容入口，不再承载插件实时写入。
+
+历史加密数据迁移时可以临时配置 `SENSITIVE_DATA_KEY_FALLBACKS`（逗号分隔的32字节 URL-safe base64 密钥）。回退密钥只用于读取旧密文；所有新写入始终使用 `SENSITIVE_DATA_KEY`。完成统一重加密和验收后应移除回退密钥。
+
+正式环境必须设置 `ASSISTANT_DEBUG=0`、独立的 `ASSISTANT_SECRET_KEY`、PostgreSQL `DATABASE_URL`、允许域名、CSRF 来源以及独立的数据加密密钥；正式环境使用 Gunicorn 或 Waitress，不使用 `manage.py runserver`。
 
 ## 健康检查
 
 - `GET /health`：进程存活。
-- `GET /ready`：数据库和必要配置就绪。
+- `GET /ready`：确认实际使用 PostgreSQL、数据库可写且没有待应用迁移；响应不包含账号、密码或连接串。
 - `GET /assistant/api/me`：当前实名账号、角色、企业范围和班次。
 
 ## 真实动作边界
@@ -44,7 +48,9 @@ Django 冻结任务、校验分页和字段签名、按企业生成报警日报/
 ## 测试
 
 ```powershell
-python manage.py test
+.\.venv\Scripts\python.exe manage.py test --settings=config.settings_test
 ```
+
+SQLite 升级 PostgreSQL 的停写、备份、迁移、核对、密钥轮换和回滚步骤见 [SQLite 到 PostgreSQL 迁移手册](docs/sqlite-to-postgresql-migration.md)。
 
 部署步骤见 [README-部署说明.md](README-部署说明.md) 和 `deploy/linux-postgresql.md`。

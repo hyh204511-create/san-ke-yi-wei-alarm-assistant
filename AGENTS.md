@@ -2,9 +2,10 @@
 
 ## Current truth
 
-- 当前真实实现是 `browser-extension/` 中的只读采集扩展和本机 JSONL 服务。
+- 当前真实实现由 `browser-extension/`、本机 JSONL 采集服务和 `server-code-0.5.4/` Django 实名助手组成。
+- Django 本机实际运行数据库已经切换为 PostgreSQL；`assistant.sqlite3` 及迁移备份只允许作为回滚源和测试兼容数据，不得重新承载插件实时写入。
 - `prototypes/` 是交互演示，不是实现证据。
-- 未经项目负责人和客户明确授权，不得实现或触发文本下发、语音对讲、查岗响应、正报、申诉、忽略等动作。
+- 真实语音、文本和平台已处理动作只能由插件按已发布规则、实名权限、班次、企业范围和全局租约自动执行；Agent 不代替插件点击业务按钮。
 - “发现接口”不等于“已交付能力”；真实状态必须写成已实现、已验证、待联调或未实现。
 
 ## Data safety
@@ -20,6 +21,8 @@
 - 不新增无必要依赖、后台、框架或抽象；当前 Node 服务只使用标准库。
 - 修改采集规则、脱敏、队列、落盘或报警提取逻辑时，必须留下最小回归测试。
 - 保持页面无侵入：不改变省平台请求参数，不额外高频轮询，不影响视频和人工操作。
+- 本机和生产运行统一使用 PostgreSQL；SQLite 只允许用于自动化测试或受控迁移回滚。数据库切换必须先备份、再迁移、对比模型行数和验证加密字段，禁止直接删除源库。
+- 数据库、应用和证据密钥只允许从环境变量或受控密钥存储读取，不得写入代码、文档、日志或 Git。历史回退密钥只在迁移期间读取旧密文，完成统一重加密后必须移除。
 
 ## Validation
 
@@ -33,6 +36,16 @@ npm test
 ```bash
 npm start
 curl http://127.0.0.1:17321/health
+```
+
+Django 本机运行链路还应验证：
+
+```powershell
+cd server-code-0.5.4
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py migrate --check
+.\.venv\Scripts\python.exe manage.py test --settings=config.settings_test
+powershell -ExecutionPolicy Bypass -File deploy/windows/start-assistant-postgresql.ps1
 ```
 
 浏览器真实联调必须使用用户已授权的会话，并在交付中说明账号权限、页面版本、已验证入口和未验证边界。
